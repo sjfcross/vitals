@@ -45,7 +45,7 @@ function NutrientRow({ label, value, drv, unit, color, indent }) {
   )
 }
 
-export function Nutrition({ meals, profile }) {
+export function Nutrition({ meals, profile, onDeleteMeal }) {
   const targets = {
     calories: profile?.target_calories || 2000,
     sodium: profile?.target_sodium_mg || 2500,
@@ -174,7 +174,8 @@ export function Nutrition({ meals, profile }) {
                   <th className="mono" style={{ textAlign: 'right', padding: '4px 6px 8px', fontWeight: 400, color: '#6ec87a' }}>P</th>
                   <th className="mono" style={{ textAlign: 'right', padding: '4px 6px 8px', fontWeight: 400, color: '#c97fd4' }}>F</th>
                   <th className="mono" style={{ textAlign: 'right', padding: '4px 6px 8px', fontWeight: 400, color: '#f0c96a' }}>C</th>
-                  <th className="mono" style={{ textAlign: 'right', padding: '4px 0 8px 6px', fontWeight: 400, color: '#5ba4e6' }}>Na</th>
+                  <th className="mono" style={{ textAlign: 'right', padding: '4px 6px 8px', fontWeight: 400, color: '#5ba4e6' }}>Na</th>
+                  <th style={{ width: 24 }} />
                 </tr>
               </thead>
               <tbody>
@@ -185,7 +186,16 @@ export function Nutrition({ meals, profile }) {
                     <td className="mono" style={{ textAlign: 'right', padding: '7px 6px', color: '#6ec87a' }}>{m.protein_g ? `${m.protein_g}g` : '–'}</td>
                     <td className="mono" style={{ textAlign: 'right', padding: '7px 6px', color: '#c97fd4' }}>{m.fat_g ? `${m.fat_g}g` : '–'}</td>
                     <td className="mono" style={{ textAlign: 'right', padding: '7px 6px', color: '#f0c96a' }}>{m.carbs_g ? `${m.carbs_g}g` : '–'}</td>
-                    <td className="mono" style={{ textAlign: 'right', padding: '7px 0 7px 6px', color: '#5ba4e6' }}>{m.sodium_mg ? `${m.sodium_mg}` : '–'}</td>
+                    <td className="mono" style={{ textAlign: 'right', padding: '7px 6px', color: '#5ba4e6' }}>{m.sodium_mg ? `${m.sodium_mg}` : '–'}</td>
+                    <td style={{ textAlign: 'center', padding: '7px 0 7px 4px' }}>
+                      <button
+                        onClick={() => { if (window.confirm(`Delete "${m.name}"?`)) onDeleteMeal(m.id) }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', fontSize: '0.75rem', color: '#6b6f73', lineHeight: 1 }}
+                        title="Delete meal"
+                      >
+                        ✕
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -196,7 +206,8 @@ export function Nutrition({ meals, profile }) {
                   <td className="mono" style={{ textAlign: 'right', padding: '7px 6px 0', color: '#6ec87a', fontWeight: 500 }}>{t.protein.toFixed(1)}g</td>
                   <td className="mono" style={{ textAlign: 'right', padding: '7px 6px 0', color: '#c97fd4', fontWeight: 500 }}>{t.fat.toFixed(1)}g</td>
                   <td className="mono" style={{ textAlign: 'right', padding: '7px 6px 0', color: '#f0c96a', fontWeight: 500 }}>{t.carbs.toFixed(1)}g</td>
-                  <td className="mono" style={{ textAlign: 'right', padding: '7px 0 0 6px', color: '#5ba4e6', fontWeight: 500 }}>{t.sodium}</td>
+                  <td className="mono" style={{ textAlign: 'right', padding: '7px 6px 0', color: '#5ba4e6', fontWeight: 500 }}>{t.sodium}</td>
+                  <td />
                 </tr>
               </tfoot>
             </table>

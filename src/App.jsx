@@ -20,7 +20,7 @@ function AppInner() {
   const [showOnboarding, setShowOnboarding] = useState(false)
 
   const { profile, loading: profileLoading, save: saveProfile } = useProfile()
-  const { meals, addMeal } = useMeals(TODAY)
+  const { meals, addMeal, deleteMeal } = useMeals(TODAY)
   const { activity, save: saveActivity } = useActivity(TODAY)
   const { entries, latest, delta7, delta30, addEntry } = useWeight()
 
@@ -42,10 +42,10 @@ function AppInner() {
         {tab === 'overview' && (
           <Overview
             meals={meals} activity={activity} profile={profile}
-            date={TODAY} onAddMeal={addMeal}
+            date={TODAY} onAddMeal={addMeal} onDeleteMeal={deleteMeal}
           />
         )}
-        {tab === 'nutrition' && <Nutrition meals={meals} profile={profile} />}
+        {tab === 'nutrition' && <Nutrition meals={meals} profile={profile} onDeleteMeal={deleteMeal} />}
         {tab === 'activity' && <Activity activity={activity} profile={profile} date={TODAY} onSave={saveActivity} />}
         {tab === 'weight' && (
           <Weight

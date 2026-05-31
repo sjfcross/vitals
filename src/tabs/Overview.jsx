@@ -5,6 +5,10 @@ import { CircularRing } from '../components/CircularRing'
 import { LogMealSheet } from '../components/LogMealSheet'
 import { useWeekMeals } from '../hooks/useMeals'
 
+function handleDelete(id, name, onDeleteMeal) {
+  if (window.confirm(`Delete "${name}"?`)) onDeleteMeal(id)
+}
+
 export function Overview({ meals, activity, profile, date, onAddMeal, onDeleteMeal }) {
   const [showLog, setShowLog] = useState(false)
   const weekData = useWeekMeals(date)
@@ -110,9 +114,18 @@ export function Overview({ meals, activity, profile, date, onAddMeal, onDeleteMe
                     {m.source === 'claude' && <span style={{ marginLeft: 6, color: '#6ec87a' }}>✨ AI</span>}
                   </div>
                 </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  {m.calories && <div className="mono" style={{ fontSize: '0.85rem', color: '#e8784a' }}>{m.calories} kcal</div>}
-                  {m.sodium_mg && <div className="mono" style={{ fontSize: '0.72rem', color: '#5ba4e6' }}>{m.sodium_mg}mg Na</div>}
+                <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                  <div>
+                    {m.calories && <div className="mono" style={{ fontSize: '0.85rem', color: '#e8784a' }}>{m.calories} kcal</div>}
+                    {m.sodium_mg && <div className="mono" style={{ fontSize: '0.72rem', color: '#5ba4e6' }}>{m.sodium_mg}mg Na</div>}
+                  </div>
+                  <button
+                    onClick={() => handleDelete(m.id, m.name, onDeleteMeal)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', fontSize: '0.85rem', color: '#6b6f73', lineHeight: 1 }}
+                    title="Delete meal"
+                  >
+                    🗑
+                  </button>
                 </div>
               </div>
             ))}

@@ -1,122 +1,68 @@
 # VITALS — Project Handoff
 
-## What it is
-A personal PWA health tracker. 4 tabs: Overview, Nutrition, Activity, Weight. Smart paste meal logger that parses Claude's nutrition analysis output. Installable on mobile. Single user.
+## What This Is
 
-**Live:** https://sjfcross.github.io/vitals/  
-**Repo:** https://github.com/sjfcross/vitals  
-**Local:** `D:\Projects\vitals`
+VITALS is a personal PWA health tracker. It runs on GitHub Pages, uses Supabase for the database, and is built with React + Vite. Single user. No backend server — all queries go direct from the browser to Supabase via the JS client.
 
----
-
-## Stack
-
-| Layer | Tech |
-|---|---|
-| Frontend | React 19 + Vite 8 |
-| Styling | Tailwind v4 (`@tailwindcss/vite` plugin, `@import "tailwindcss"` in index.css) |
-| Database | Supabase (Postgres + Auth) |
-| PWA | vite-plugin-pwa + Workbox |
-| Deploy | GitHub Actions → GitHub Pages |
+Live: deployed to GitHub Pages (repo: vitals under the user's GitHub account).
+Local dev: `D:\Projects\vitals` — run with `npm run dev`.
 
 ---
 
-## Supabase
+## Tech Stack
 
-| | |
-|---|---|
-| Project URL | `https://rkxorbsusqfhlhrlajlj.supabase.co` |
-| Anon key | `sb_publishable_WtmGBuHzra4uafOZe17pbg_jFFL7YCa` |
-| Auth | Email/password, email confirm OFF |
-| RLS | Enabled on all tables, policy: `auth.role() = 'authenticated'` on ALL ops |
-
-**Tables:** `meals`, `activity`, `weight`, `user_profile`  
-**Grants:** ALL granted to `anon` and `authenticated` roles.
-
-Local credentials live in `D:\Projects\vitals\.env.local` (not committed):
-```
-VITE_SUPABASE_URL=https://rkxorbsusqfhlhrlajlj.supabase.co
-VITE_SUPABASE_ANON_KEY=sb_publishable_WtmGBuHzra4uafOZe17pbg_jFFL7YCa
-```
-
-GitHub Secrets (for CI builds): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` — both set in repo settings.
+- **Frontend:** React 18, Vite, Recharts (charts only)
+- **Database:** Supabase (Postgres + auth + RLS)
+- **Auth:** Supabase email/password — single user, sessions persisted in localStorage
+- **Hosting:** GitHub Pages via `gh-pages` branch
+- **Styling:** Plain inline styles + a small `index.css` with utility classes (`.card`, `.input`, `.btn-primary`, `.btn-ghost`, `.mono`, `.sheet`, `.sheet-backdrop`)
 
 ---
 
-## Project Structure
+## Database Schema (Supabase)
 
-```
-D:\Projects\vitals\
-├── .env.local                        ← Supabase creds (not committed)
-├── .github/workflows/deploy.yml      ← Build + deploy to GitHub Pages on push to main
-├── index.html                        ← Entry point, Google Fonts (DM Sans + DM Mono)
-├── vite.config.js                    ← base: '/vitals/', Tailwind plugin, PWA config
-├── package.json
-└── src/
-    ├── main.jsx
-    ├── App.jsx                       ← Auth gate → AppInner → Layout + 4 tabs
-    ├── index.css                     ← Full design system (CSS vars + utility classes)
-    ├── lib/
-    │   └── supabase.js               ← createClient, logs error if env vars missing
-    ├── hooks/
-    │   ├── useProfile.js             ← user_profile table (targets, height)
-    │   ├── useMeals.js               ← meals table + useWeekMeals
-    │   ├── useActivity.js            ← activity table + useWeekActivity
-    │   └── useWeight.js              ← weight table (30-day window)
-    ├── components/
-    │   ├── Login.jsx                 ← Email/password login form
-    │   ├── Layout.jsx                ← Tab bar + header
-    │   ├── CircularRing.jsx          ← SVG progress ring
-    │   ├── LogMealSheet.jsx          ← Bottom sheet: paste parser + manual entry
-    │   └── OnboardingSheet.jsx       ← First-launch: set height + targets
-    └── tabs/
-        ├── Overview.jsx              ← Daily summary rings + quick-log
-        ├── Nutrition.jsx             ← Meal list + weekly chart
-        ├── Activity.jsx              ← Steps + active minutes
-        └── Weight.jsx                ← Weight log + trend chart
-```
+### `meals`
+| Column | Type | Nullable |
+|---|---|---|
+| id | uuid | PK |
+| user_id | uuid | FK → auth.users |
+| date | date | NOT NULL |
+| time | time | |
+| name | text | — meal label the user types |
+| description | text | YES — AI-generated plain-English label, e.g. "double espresso" |
+| emoji | text | |
+| source | text | `'manual'` or `'claude'` |
+| calories | int | |
+| protein_g | numeric | |
+| fat_g | numeric | |
+| fat_saturated_g | numeric | |
+| carbs_g | numeric | |
+| sugar_g | numeric | |
+| sugar_added_g | numeric | |
+| fiber_g | numeric | |
+| sodium_mg | int | |
+| calcium_mg | numeric | |
+| iron_mg | numeric | |
+| potassium_mg | numeric | |
+| vitamin_c_mg | numeric | |
+| vitamin_d_ug | numeric | |
 
----
+RLS policy: `auth.role() = 'authenticated'` covers all columns — no changes needed when adding columns.
 
-## Auth Flow
-
-```
-App.jsx
-  session === undefined  →  loading spinner ("VITALS")
-  session === null       →  <Login />
-  session exists         →  <AppInner />
-                                ↓
-                         useProfile() loads user_profile
-                         if no profile → <OnboardingSheet />
-```
-
-`getSession()` has full error handling — if Supabase fails it falls through to login instead of hanging.
+### `weight_logs`, `activity_logs`, `profiles`
+Standard single-user tables. Not relevant to meal logging.
 
 ---
 
-## Smart Paste Meal Logger
+## Claude Paste Format
 
-In-app: **Log meal → ✨ Paste from Claude**
+When asking Claude to analyse a meal, use this prompt:
 
-The parser (`LogMealSheet.jsx`) looks for these keywords (case-insensitive):
-
-| Field | Matches |
-|---|---|
-| Calories | `calories: 355` |
-| Protein | `protein: 15g` |
-| Fat | `fat: 16g` or `total fat: 16g` |
-| Saturated fat | `saturated: 6g` |
-| Carbs | `carbs: 38g` or `carbohydrates: 38g` |
-| Sugar | `sugar: 10g` |
-| Added sugar | `added sugar: ~2g` |
-| Fibre | `fibre: 2g` or `fiber: 2g` |
-| Sodium | `sodium: 750mg` |
-
-**Prompt to use in any Claude conversation:**
 ```
 Analyse the nutrition of: [describe your meal]
 
 Reply in this exact format:
+Description: [short plain-English label, e.g. "double espresso" or "beef burger with fries"]
 Calories: [number] kcal
 Protein: [number]g
 Fat: [number]g
@@ -128,64 +74,104 @@ Fibre: [number]g
 Sodium: [number]mg
 ```
 
+`Description:` goes first — the parser uses a multiline anchored regex and hits it before any nutrient lines.
+
 ---
 
-## Design System (`src/index.css`)
+## Key Files
 
-**Backgrounds:** `--bg: #0e0f11` · `--card: #161819` · `--elevated: #1e2022`  
-**Text:** `--text: #f0eeea` · `--muted: #9ca0a4` · `--very-muted: #6b6f73`  
-**Fonts:** DM Sans (body) · DM Mono (numbers/mono)
+```
+src/
+  components/
+    LogMealSheet.jsx   — paste parser, manual form, Supabase insert
+    Login.jsx          — auth screen
+    OnboardingSheet.jsx — first-run profile setup
+    CircularRing.jsx   — SVG ring chart component
+    Layout.jsx         — tab bar + page wrapper
+  hooks/
+    useMeals.js        — fetch/add/delete meals; uses select('*') so new columns auto-appear
+    useProfile.js      — user profile/targets
+    useActivity.js     — step/activity data
+    useWeight.js       — weight log data
+  tabs/
+    Overview.jsx       — rings + weekly bar chart + today's meal list + Log meal CTA
+    Nutrition.jsx      — calorie hero, macro donut, full nutrient table, per-meal breakdown
+    Activity.jsx       — step log
+    Weight.jsx         — weight chart
+  lib/
+    supabase.js        — Supabase client init
+  main.jsx             — app entry
+  App.jsx              — auth gate + tab routing
+```
 
-**Accent colours:**
+---
 
-| Nutrient | Colour |
+## LogMealSheet — How It Works
+
+Two entry modes selectable from a card picker:
+
+**Paste from Claude**
+1. User pastes Claude's output into a textarea.
+2. `parsePaste(text)` fires on every keystroke once text > 20 chars.
+3. Regex extracts `description` plus all nutrient fields.
+4. `setMode('form')` auto-triggers — user lands on the review form.
+5. A `"…description…"` preview line shows in monospace if description was parsed.
+6. User fills in the meal name + emoji, adjusts any numbers, saves.
+
+**Manual entry**
+Standard form with a DESCRIPTION field at the top (optional, maxLength 120), MEAL NAME (required), emoji picker, time, and a nutrient grid.
+
+**Save**
+`handleSave` builds a meal object and calls `onSave(meal)` → `useMeals.addMeal()` → Supabase insert. `description` is saved as `null` when empty.
+
+### Parser regexes (in `parsePaste`)
+
+```js
+const description = text.match(/^description[:\s]+(.+)$/im)?.[1]?.trim() ?? ''
+// all nutrients use case-insensitive float/int extraction
+```
+
+---
+
+## Overview Tab — Meal List
+
+Each meal card shows:
+- Emoji (left)
+- **Name** (primary, required — user-entered)
+- **Description** (secondary line, muted colour — AI-generated, only shown when present)
+- Time + ✨ AI badge (if source === 'claude')
+- Calories + sodium (right)
+
+---
+
+## Nutrition Tab — Per-Meal Table
+
+The "PER MEAL" breakdown table shows `m.description || m.name` in the Meal column — AI-logged meals show the natural-language label; manual meals show the user's name.
+
+---
+
+## useMeals — No Changes Needed for New Columns
+
+Uses `select('*')` — any new column added to the DB automatically comes back in the data.
+
+---
+
+## What You Don't Touch
+
+- `Login.jsx`, `OnboardingSheet.jsx`
+- `useActivity.js`, `useWeight.js`, `useProfile.js`
+- `Activity.jsx`, `Weight.jsx`
+- `vite.config.js`, `index.css`
+- RLS policies
+- Any Supabase table other than `meals`
+
+---
+
+## Edge Cases
+
+| Case | Behaviour |
 |---|---|
-| Calories | `#e8784a` |
-| Sodium | `#5ba4e6` |
-| Protein | `#6ec87a` |
-| Fat | `#c97fd4` |
-| Carbs | `#f0c96a` |
-| Fibre | `#5ecfcf` |
-| Steps | `#b47fdb` |
-| Weight | `#f0c96a` |
-
-**CSS classes:** `.card` · `.card-lg` · `.card-elevated` · `.input` · `.btn-primary` · `.btn-ghost` · `.mono` · `.fade-up` · `.sheet` · `.sheet-backdrop`
-
----
-
-## Deploy Pipeline
-
-Push to `main` → GitHub Actions builds with secrets → uploads `dist/` → GitHub Pages serves at `/vitals/`.
-
-```bash
-# Trigger manually if needed
-& "C:\Program Files\GitHub CLI\gh.exe" run rerun <run-id> --repo sjfcross/vitals
-& "C:\Program Files\GitHub CLI\gh.exe" run list --repo sjfcross/vitals --limit 5
-```
-
-Build locally:
-```powershell
-cd D:\Projects\vitals
-npm run build   # outputs to dist/
-npm run dev     # local dev server
-```
-
----
-
-## Infrastructure Notes
-
-- **Git SSL:** Fixed globally — `git config --global http.sslBackend schannel`. Push/pull work without errors.
-- **gh CLI:** Installed at `C:\Program Files\GitHub CLI\gh.exe`. Authenticated as `sjfcross`. Not in PATH — call via full path.
-- **Claude in Chrome:** MCP extension connected — can take screenshots, run JS, navigate.
-
----
-
-## Homepage Card (`F:\sjfcross.github.io`)
-
-VITALS has a card on the homepage at `https://sjfcross.github.io`. It's in the "Apps" row at the bottom of the divisions grid.
-
-- **HTML:** `F:\sjfcross.github.io\index.html` — look for `division-card-app`
-- **CSS:** `F:\sjfcross.github.io\app.css` — `.division-card-app`, `.card-app-inner`, `.app-title`, `.app-desc`
-- **Image:** `F:\sjfcross.github.io\assets\img\vitals.jpg`
-- Card shows: image background, light overlay, APP tag, VITALS title, description
-- Homepage repo: `https://github.com/sjfcross/sjfcross.github.io`
+| Old meal rows (no description) | `meal.description` is `null` — Overview shows nothing; Nutrition falls back to `m.name` |
+| Paste without a Description line | Regex returns `''`, saved as `null` |
+| Very long description | `maxLength={120}` on the input; no DB constraint |
+| Description contains quotes | Supabase client handles escaping |
