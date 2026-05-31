@@ -32,14 +32,14 @@ export function Overview({ meals, activity, profile, date, onAddMeal, onDeleteMe
   return (
     <div style={{ padding: '0 16px 100px' }}>
       {/* Rings */}
-      <div className="fade-up stagger-1" style={{ display: 'flex', justifyContent: 'space-around', padding: '20px 0' }}>
+      <div className="card fade-up stagger-1" style={{ display: 'flex', justifyContent: 'space-around', padding: '20px 0', marginTop: 16, marginBottom: 0, borderRadius: 'var(--radius-lg)' }}>
         <CircularRing label="Calories" value={totals.calories} target={targets.calories} color="var(--calories)" />
         <CircularRing label="Sodium" value={totals.sodium} target={targets.sodium} color="var(--sodium)" unit="mg" />
         <CircularRing label="Protein" value={Math.round(totals.protein)} target={targets.protein} color="var(--protein)" unit="g" />
       </div>
 
       {/* Steps + Weight row */}
-      <div className="fade-up stagger-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+      <div className="fade-up stagger-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10, marginTop: 10 }}>
         <div className="card" style={{ padding: '14px 16px' }}>
           <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em', marginBottom: 8 }}>STEPS</div>
           <div className="mono" style={{ fontSize: '1.5rem', fontWeight: 500, color: '#b47fdb' }}>
@@ -134,7 +134,13 @@ export function Overview({ meals, activity, profile, date, onAddMeal, onDeleteMe
       </div>
 
       {/* Log meal CTA */}
-      <div style={{ position: 'fixed', bottom: 'max(76px, calc(60px + env(safe-area-inset-bottom)))', left: 16, right: 16 }}>
+      <div style={{
+        position: 'fixed',
+        bottom: 'max(76px, calc(60px + env(safe-area-inset-bottom)))',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: 'min(calc(100% - 32px), 448px)',
+      }}>
         <button className="btn-primary fade-up stagger-5" onClick={() => setShowLog(true)}>
           + Log meal
         </button>

@@ -98,24 +98,38 @@ export function LogMealSheet({ onClose, onSave, date }) {
         </div>
 
         {mode === 'choose' && (
-          <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <button className="card" onClick={() => setMode('paste')} style={{
-              padding: '18px', textAlign: 'left', cursor: 'pointer', border: '1px solid var(--border)',
-              background: 'var(--elevated)', borderRadius: 12,
-            }}>
+          <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <button onClick={() => setMode('paste')} style={{
+              padding: '16px 18px', textAlign: 'left', cursor: 'pointer',
+              border: '1px solid var(--border)', background: 'var(--elevated)',
+              borderRadius: 14, transition: 'border-color 0.15s, transform 0.14s cubic-bezier(0.23,1,0.32,1)',
+            }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-hover)'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+              onPointerDown={e => e.currentTarget.style.transform = 'scale(0.97)'}
+              onPointerUp={e => e.currentTarget.style.transform = 'scale(1)'}
+              onPointerLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+            >
               <div style={{ fontSize: '1.2rem', marginBottom: 6 }}>✨</div>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#f0eeea' }}>Paste from Claude</div>
-              <div style={{ fontSize: '0.78rem', color: '#9ca0a4', marginTop: 4 }}>
+              <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#f0eeea' }}>Paste from Claude</div>
+              <div style={{ fontSize: '0.76rem', color: '#9ca0a4', marginTop: 3 }}>
                 Paste Claude's nutrition analysis — auto-fills all fields
               </div>
             </button>
-            <button className="card" onClick={() => setMode('form')} style={{
-              padding: '18px', textAlign: 'left', cursor: 'pointer', border: '1px solid var(--border)',
-              background: 'var(--elevated)', borderRadius: 12,
-            }}>
+            <button onClick={() => setMode('form')} style={{
+              padding: '16px 18px', textAlign: 'left', cursor: 'pointer',
+              border: '1px solid var(--border)', background: 'var(--elevated)',
+              borderRadius: 14, transition: 'border-color 0.15s, transform 0.14s cubic-bezier(0.23,1,0.32,1)',
+            }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-hover)'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+              onPointerDown={e => e.currentTarget.style.transform = 'scale(0.97)'}
+              onPointerUp={e => e.currentTarget.style.transform = 'scale(1)'}
+              onPointerLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+            >
               <div style={{ fontSize: '1.2rem', marginBottom: 6 }}>✏️</div>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#f0eeea' }}>Manual entry</div>
-              <div style={{ fontSize: '0.78rem', color: '#9ca0a4', marginTop: 4 }}>Enter macros by hand</div>
+              <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#f0eeea' }}>Manual entry</div>
+              <div style={{ fontSize: '0.76rem', color: '#9ca0a4', marginTop: 3 }}>Enter macros by hand</div>
             </button>
           </div>
         )}
