@@ -180,7 +180,7 @@ export function Nutrition({ meals, profile }) {
               <tbody>
                 {meals.map(m => (
                   <tr key={m.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-                    <td style={{ padding: '7px 8px 7px 0', color: '#f0eeea', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.emoji} {m.name}</td>
+                    <td style={{ padding: '7px 8px 7px 0', color: '#f0eeea', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.emoji} {m.description || m.name}</td>
                     <td className="mono" style={{ textAlign: 'right', padding: '7px 6px', color: '#e8784a' }}>{m.calories || '–'}</td>
                     <td className="mono" style={{ textAlign: 'right', padding: '7px 6px', color: '#6ec87a' }}>{m.protein_g ? `${m.protein_g}g` : '–'}</td>
                     <td className="mono" style={{ textAlign: 'right', padding: '7px 6px', color: '#c97fd4' }}>{m.fat_g ? `${m.fat_g}g` : '–'}</td>

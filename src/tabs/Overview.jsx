@@ -100,6 +100,11 @@ export function Overview({ meals, activity, profile, date, onAddMeal, onDeleteMe
                   <div style={{ fontSize: '0.875rem', fontWeight: 500, color: '#f0eeea', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {m.name}
                   </div>
+                  {m.description && (
+                    <div style={{ fontSize: '0.72rem', color: '#9ca0a4', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {m.description}
+                    </div>
+                  )}
                   <div style={{ fontSize: '0.72rem', color: '#6b6f73', marginTop: 2 }}>
                     {m.time?.slice(0, 5)}
                     {m.source === 'claude' && <span style={{ marginLeft: 6, color: '#6ec87a' }}>✨ AI</span>}

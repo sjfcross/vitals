@@ -11,7 +11,9 @@ function parsePaste(text) {
     }
     return ''
   }
+  const description = text.match(/^description[:\s]+(.+)$/im)?.[1]?.trim() ?? ''
   return {
+    description,
     calories: get([/calories?[:\s]+(\d+)/i]) || '',
     protein_g: get([/protein[:\s]+([\d.]+)/i]) || '',
     fat_g: get([/fat[:\s]+([\d.]+)/i, /total fat[:\s]+([\d.]+)/i]) || '',
@@ -25,7 +27,7 @@ function parsePaste(text) {
 }
 
 const EMPTY = {
-  name: '', emoji: '🍽️', time: dayjs().format('HH:mm'),
+  name: '', description: '', emoji: '🍽️', time: dayjs().format('HH:mm'),
   calories: '', protein_g: '', fat_g: '', fat_saturated_g: '',
   carbs_g: '', sugar_g: '', sugar_added_g: '', fiber_g: '', sodium_mg: '',
   source: 'manual',
@@ -59,6 +61,7 @@ export function LogMealSheet({ onClose, onSave, date }) {
       date,
       time: form.time || dayjs().format('HH:mm:ss'),
       name: form.name.trim(),
+      description: form.description || null,
       emoji: form.emoji,
       source: form.source,
       calories: form.calories ? parseInt(form.calories) : null,
@@ -127,7 +130,7 @@ export function LogMealSheet({ onClose, onSave, date }) {
               rows={8}
               value={pasteText}
               onChange={handlePaste}
-              placeholder={`Calories: 620 kcal\nProtein: 38g\nFat: 22g\nCarbs: 68g\nSodium: 780mg\nSugar: 12g\nAdded sugar: ~2g\nFibre: 4g`}
+              placeholder={`Description: beef burger with fries\nCalories: 620 kcal\nProtein: 38g\nFat: 22g\nCarbs: 68g\nSodium: 780mg\nSugar: 12g\nAdded sugar: ~2g\nFibre: 4g`}
               autoFocus
             />
             <button className="btn-primary" onClick={() => setMode('form')} disabled={!pasteText.trim()}>
@@ -144,6 +147,17 @@ export function LogMealSheet({ onClose, onSave, date }) {
                 <span style={{ fontSize: '0.7rem', color: '#6ec87a', letterSpacing: '0.04em' }}>✨ AI analysis</span>
               </div>
             )}
+
+            {form.source === 'claude' && form.description && (
+              <p className="mono" style={{ fontSize: '0.85rem', color: '#9ca0a4', margin: 0 }}>
+                "{form.description}"
+              </p>
+            )}
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: '#9ca0a4', marginBottom: 5 }}>DESCRIPTION</label>
+              <input className="input" type="text" value={form.description} onChange={set('description')} placeholder="e.g. beef burger with fries" maxLength={120} />
+            </div>
 
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
               <div style={{ flex: 1 }}>
