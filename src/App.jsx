@@ -71,7 +71,15 @@ export default function App() {
   const [session, setSession] = useState(undefined)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
+    supabase.auth.getSession()
+      .then(({ data: { session }, error }) => {
+        if (error) console.error('VITALS: getSession error', error)
+        setSession(session ?? null)
+      })
+      .catch(err => {
+        console.error('VITALS: getSession threw', err)
+        setSession(null)
+      })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session))
     return () => subscription.unsubscribe()
   }, [])
