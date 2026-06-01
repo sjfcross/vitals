@@ -11,10 +11,10 @@ Local dev: `D:\Projects\vitals` — run with `npm run dev`.
 
 ## Tech Stack
 
-- **Frontend:** React 18, Vite, Recharts (charts only)
+- **Frontend:** React 19, Vite, Recharts (charts only)
 - **Database:** Supabase (Postgres + auth + RLS)
 - **Auth:** Supabase email/password — single user, sessions persisted in localStorage
-- **Hosting:** GitHub Pages via `gh-pages` branch
+- **Hosting:** GitHub Pages via GitHub Actions (`deploy.yml`) — auto-deploys on every push to `main`
 - **Styling:** Plain inline styles + a small `index.css` with utility classes (`.card`, `.input`, `.btn-primary`, `.btn-ghost`, `.mono`, `.sheet`, `.sheet-backdrop`)
 
 ---
@@ -49,8 +49,31 @@ Local dev: `D:\Projects\vitals` — run with `npm run dev`.
 
 RLS policy: `auth.role() = 'authenticated'` covers all columns — no changes needed when adding columns.
 
-### `weight_logs`, `activity_logs`, `profiles`
-Standard single-user tables. Not relevant to meal logging.
+### `weight`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| user_id | uuid | FK → auth.users (default auth.uid()) |
+| date | date | NOT NULL |
+| time | time | |
+| weight_kg | numeric | |
+
+### `blood_pressure`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| user_id | uuid | FK → auth.users (default auth.uid()) |
+| date | date | NOT NULL |
+| time | time | NOT NULL |
+| systolic | integer | NOT NULL |
+| diastolic | integer | NOT NULL |
+| pulse | integer | nullable |
+| created_at | timestamptz | default now() |
+
+RLS: enabled, policy `auth.uid() = user_id` for all operations on both tables.
+
+### `activity`, `user_profile`
+Standard single-user tables.
 
 ---
 
@@ -92,12 +115,14 @@ src/
     useMeals.js        — fetch/add/delete meals; uses select('*') so new columns auto-appear
     useProfile.js      — user profile/targets
     useActivity.js     — step/activity data
-    useWeight.js       — weight log data
+    useWeight.js       — all-time weight data; computes delta7, delta30
+    useBloodPressure.js — all-time BP data; latest reading
   tabs/
     Overview.jsx       — rings + weekly bar chart + meal list + date nav + Log meal CTA
     Nutrition.jsx      — calorie hero, macro donut, full nutrient table, per-meal breakdown
     Activity.jsx       — step log + date nav
-    Weight.jsx         — weight chart
+    Weight.jsx         — current weight card, 7/30-day deltas, chart with 1W/4W/All toggle, log form
+    BloodPressure.jsx  — latest SYS/DIA card + classification, dual-line chart with 1W/4W/All toggle, log form, recent readings list
   lib/
     supabase.js        — Supabase client init
   main.jsx             — app entry
@@ -175,11 +200,36 @@ Uses `select('*')` — any new column added to the DB automatically comes back i
 ## What You Don't Touch
 
 - `Login.jsx`, `OnboardingSheet.jsx`
-- `useWeight.js`, `useProfile.js`
-- `Weight.jsx`
-- `vite.config.js`, `index.css`
+- `useProfile.js`
+- `vite.config.js`
 - RLS policies
-- Any Supabase table other than `meals`
+
+---
+
+## Blood Pressure Tab
+
+### Classification logic (in `BloodPressure.jsx`)
+| Label | Condition |
+|---|---|
+| Normal | sys < 120 and dia < 80 |
+| Elevated | sys 120–129 and dia < 80 |
+| High (Stage 1) | sys 130–139 or dia 80–89 |
+| High (Stage 2) | sys ≥ 140 or dia ≥ 90 |
+| Hypertensive Crisis | sys > 180 or dia > 120 |
+
+### Chart
+Dual-line recharts chart — systolic (`#e87a8a`) and diastolic (`#5ba4e6`). Reference lines at 120 (systolic normal ceiling) and 80 (diastolic normal ceiling). Range toggle: 1W / 4W / All.
+
+### Known issue
+Chart is hidden when `entries.length <= 1`. With only 1 data point you can't draw a line, so the chart card doesn't render. Fix: always show the chart card but with a placeholder message when there's only 1 point.
+
+---
+
+## Weight Tab
+
+- Loads **all-time** data (no 30-day cap) — range toggle filters in the component.
+- delta7 and delta30 are computed in `useWeight.js` by finding the earliest entry on or after the cutoff date.
+- Chart also hidden when `entries.length <= 1` (same issue as BP above).
 
 ---
 
