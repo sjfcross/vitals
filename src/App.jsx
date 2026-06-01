@@ -18,10 +18,11 @@ const TODAY = dayjs().format('YYYY-MM-DD')
 function AppInner() {
   const [tab, setTab] = useState('overview')
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [date, setDate] = useState(TODAY)
 
   const { profile, loading: profileLoading, save: saveProfile } = useProfile()
-  const { meals, addMeal, deleteMeal } = useMeals(TODAY)
-  const { activity, save: saveActivity } = useActivity(TODAY)
+  const { meals, addMeal, deleteMeal } = useMeals(date)
+  const { activity, save: saveActivity } = useActivity(date)
   const { entries, latest, delta7, delta30, addEntry } = useWeight()
 
   useEffect(() => {
@@ -38,15 +39,15 @@ function AppInner() {
 
   return (
     <>
-      <Layout tab={tab} setTab={setTab} date={TODAY}>
+      <Layout tab={tab} setTab={setTab} date={date}>
         {tab === 'overview' && (
           <Overview
             meals={meals} activity={activity} profile={profile}
-            date={TODAY} onAddMeal={addMeal} onDeleteMeal={deleteMeal}
+            date={date} today={TODAY} onAddMeal={addMeal} onDeleteMeal={deleteMeal} onDateChange={setDate}
           />
         )}
         {tab === 'nutrition' && <Nutrition meals={meals} profile={profile} onDeleteMeal={deleteMeal} />}
-        {tab === 'activity' && <Activity activity={activity} profile={profile} date={TODAY} onSave={saveActivity} />}
+        {tab === 'activity' && <Activity activity={activity} profile={profile} date={date} onSave={saveActivity} />}
         {tab === 'weight' && (
           <Weight
             entries={entries} latest={latest} delta7={delta7} delta30={delta30}

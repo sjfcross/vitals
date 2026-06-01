@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { BarChart, Bar, Cell, ResponsiveContainer, ReferenceLine } from 'recharts'
 import dayjs from 'dayjs'
 import { CircularRing } from '../components/CircularRing'
@@ -9,9 +9,11 @@ function handleDelete(id, name, onDeleteMeal) {
   if (window.confirm(`Delete "${name}"?`)) onDeleteMeal(id)
 }
 
-export function Overview({ meals, activity, profile, date, onAddMeal, onDeleteMeal }) {
+export function Overview({ meals, activity, profile, date, today, onAddMeal, onDeleteMeal, onDateChange }) {
   const [showLog, setShowLog] = useState(false)
+  const dateInputRef = useRef(null)
   const weekData = useWeekMeals(date)
+  const isToday = date === today
 
   const targets = {
     calories: profile?.target_calories || 2000,
@@ -31,6 +33,39 @@ export function Overview({ meals, activity, profile, date, onAddMeal, onDeleteMe
 
   return (
     <div style={{ padding: '0 16px 100px' }}>
+
+      {/* Date navigation */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, marginBottom: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="mono" style={{ fontSize: '0.78rem', color: isToday ? '#e8784a' : '#9ca0a4', letterSpacing: '0.04em' }}>
+            {isToday ? 'TODAY' : dayjs(date).format('MMM D, YYYY')}
+          </span>
+          <button
+            onClick={() => dateInputRef.current?.showPicker?.() || dateInputRef.current?.click()}
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', fontSize: '0.72rem', color: '#9ca0a4', lineHeight: 1.4 }}
+            title="Pick a date"
+          >
+            📅
+          </button>
+          <input
+            ref={dateInputRef}
+            type="date"
+            max={today}
+            value={date}
+            onChange={e => e.target.value && onDateChange(e.target.value)}
+            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+          />
+        </div>
+        {!isToday && (
+          <button
+            onClick={() => onDateChange(today)}
+            style={{ background: 'none', border: '1px solid rgba(232,120,74,0.35)', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: '0.68rem', color: '#e8784a', letterSpacing: '0.04em' }}
+          >
+            Back to today
+          </button>
+        )}
+      </div>
+
       {/* Rings */}
       <div className="card fade-up stagger-1" style={{ display: 'flex', justifyContent: 'space-around', padding: '20px 0', marginTop: 16, marginBottom: 0, borderRadius: 'var(--radius-lg)' }}>
         <CircularRing label="Calories" value={totals.calories} target={targets.calories} color="var(--calories)" />
@@ -90,7 +125,7 @@ export function Overview({ meals, activity, profile, date, onAddMeal, onDeleteMe
 
       {/* Meal list */}
       <div className="fade-up stagger-4">
-        <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em', marginBottom: 10 }}>TODAY'S MEALS</div>
+        <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em', marginBottom: 10 }}>{isToday ? "TODAY'S MEALS" : `${dayjs(date).format('MMM D').toUpperCase()} — MEALS`}</div>
         {meals.length === 0 ? (
           <div style={{ textAlign: 'center', color: '#6b6f73', fontSize: '0.85rem', padding: '24px 0' }}>
             No meals logged yet
