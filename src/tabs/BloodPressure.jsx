@@ -40,19 +40,22 @@ export function BloodPressure({ entries, latest, onAdd }) {
   async function handleSave() {
     if (!sys || !dia) return
     setSaving(true)
-    await onAdd({
-      date: dayjs().format('YYYY-MM-DD'),
-      time: time || dayjs().format('HH:mm:ss'),
-      systolic: parseInt(sys, 10),
-      diastolic: parseInt(dia, 10),
-      pulse: pulse ? parseInt(pulse, 10) : null,
-    })
-    setSys('')
-    setDia('')
-    setPulse('')
-    setSaving(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    try {
+      await onAdd({
+        date: dayjs().format('YYYY-MM-DD'),
+        time: time || dayjs().format('HH:mm:ss'),
+        systolic: parseInt(sys, 10),
+        diastolic: parseInt(dia, 10),
+        pulse: pulse ? parseInt(pulse, 10) : null,
+      })
+      setSys('')
+      setDia('')
+      setPulse('')
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (

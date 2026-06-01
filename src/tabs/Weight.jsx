@@ -33,15 +33,18 @@ export function Weight({ entries, latest, delta7, delta30, profile, onAdd }) {
   async function handleSave() {
     if (!kg) return
     setSaving(true)
-    await onAdd({
-      date: dayjs().format('YYYY-MM-DD'),
-      time: time || dayjs().format('HH:mm:ss'),
-      weight_kg: parseFloat(kg),
-    })
-    setKg('')
-    setSaving(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    try {
+      await onAdd({
+        date: dayjs().format('YYYY-MM-DD'),
+        time: time || dayjs().format('HH:mm:ss'),
+        weight_kg: parseFloat(kg),
+      })
+      setKg('')
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const DeltaCard = ({ label, value }) => (
