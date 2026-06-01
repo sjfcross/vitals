@@ -21,6 +21,7 @@ export function BloodPressure({ entries, latest, onAdd }) {
   const [dia, setDia] = useState('')
   const [pulse, setPulse] = useState('')
   const [time, setTime] = useState(dayjs().format('HH:mm'))
+  const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [range, setRange] = useState('4w')
@@ -47,10 +48,12 @@ export function BloodPressure({ entries, latest, onAdd }) {
         systolic: parseInt(sys, 10),
         diastolic: parseInt(dia, 10),
         pulse: pulse ? parseInt(pulse, 10) : null,
+        notes: notes.trim() || null,
       })
       setSys('')
       setDia('')
       setPulse('')
+      setNotes('')
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } finally {
@@ -95,8 +98,15 @@ export function BloodPressure({ entries, latest, onAdd }) {
           </div>
         </div>
         {latest && (
-          <div style={{ fontSize: '0.7rem', color: '#6b6f73', marginTop: 12 }}>
-            {dayjs(latest.date).format('MMM D, YYYY')} at {latest.time?.slice(0, 5)}
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: '0.7rem', color: '#6b6f73' }}>
+              {dayjs(latest.date).format('MMM D, YYYY')} at {latest.time?.slice(0, 5)}
+            </div>
+            {latest.notes && (
+              <div style={{ fontSize: '0.75rem', color: '#9ca0a4', marginTop: 5, fontStyle: 'italic' }}>
+                {latest.notes}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -180,6 +190,10 @@ export function BloodPressure({ entries, latest, onAdd }) {
             <input className="input mono" type="time" value={time} onChange={e => setTime(e.target.value)} />
           </div>
         </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', fontSize: '0.72rem', color: '#9ca0a4', marginBottom: 5 }}>NOTES (optional)</label>
+          <textarea className="input" rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. felt stressed, after exercise…" style={{ resize: 'none' }} />
+        </div>
         <button className="btn-primary" onClick={handleSave} disabled={saving || !sys || !dia} style={{ marginTop: 4 }}>
           {saving ? 'Saving…' : saved ? '✓ Logged' : 'Log reading'}
         </button>
@@ -198,7 +212,7 @@ export function BloodPressure({ entries, latest, onAdd }) {
                   padding: '10px 0',
                   borderBottom: i < Math.min(entries.length, 8) - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
                 }}>
-                  <div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="mono" style={{ fontSize: '1rem', lineHeight: 1 }}>
                       <span style={{ color: '#e87a8a' }}>{e.systolic}</span>
                       <span style={{ color: '#6b6f73', margin: '0 3px' }}>/</span>
@@ -208,6 +222,11 @@ export function BloodPressure({ entries, latest, onAdd }) {
                     <div style={{ fontSize: '0.7rem', color: '#6b6f73', marginTop: 3 }}>
                       {dayjs(e.date).format('MMM D')} · {e.time?.slice(0, 5)}
                     </div>
+                    {e.notes && (
+                      <div style={{ fontSize: '0.72rem', color: '#9ca0a4', marginTop: 4, fontStyle: 'italic', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {e.notes}
+                      </div>
+                    )}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: cls.color }}>{cls.label}</div>
                 </div>

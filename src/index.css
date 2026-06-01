@@ -118,6 +118,20 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
 
+  .app-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    background: #0c0d0f;
+    max-width: 600px;
+    margin: 0 auto;
+    position: relative;
+
+    @media (min-width: 900px) {
+      max-width: 780px;
+    }
+  }
+
   .tab-bar {
     padding-bottom: max(8px, env(safe-area-inset-bottom));
   }

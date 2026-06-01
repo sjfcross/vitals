@@ -10,7 +10,7 @@ const TABS = [
 
 export function Layout({ tab, setTab, date, children }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: '#0c0d0f', maxWidth: 480, margin: '0 auto', position: 'relative' }}>
+    <div className="app-shell">
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
