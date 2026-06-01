@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { BarChart, Bar, Cell, ResponsiveContainer } from 'recharts'
 import dayjs from 'dayjs'
 import { useWeekActivity } from '../hooks/useActivity'
 
-export function Activity({ activity, profile, date, onSave }) {
+export function Activity({ activity, profile, date, today, onSave, onDateChange }) {
   const [form, setForm] = useState({
     steps: activity?.steps || '',
     km: activity?.km || '',
@@ -13,7 +13,19 @@ export function Activity({ activity, profile, date, onSave }) {
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const dateInputRef = useRef(null)
   const weekData = useWeekActivity(date)
+  const isToday = date === today
+
+  useEffect(() => {
+    setForm({
+      steps: activity?.steps || '',
+      km: activity?.km || '',
+      active_minutes: activity?.active_minutes || '',
+      workout_type: activity?.workout_type || '',
+      workout_duration_min: activity?.workout_duration_min || '',
+    })
+  }, [activity])
 
   const steps = activity?.steps || 0
   const target = profile?.target_steps || 10000
@@ -36,6 +48,39 @@ export function Activity({ activity, profile, date, onSave }) {
 
   return (
     <div style={{ padding: '16px 16px 100px' }}>
+
+      {/* Date navigation */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="mono" style={{ fontSize: '0.78rem', color: isToday ? '#b47fdb' : '#9ca0a4', letterSpacing: '0.04em' }}>
+            {isToday ? 'TODAY' : dayjs(date).format('MMM D, YYYY')}
+          </span>
+          <button
+            onClick={() => dateInputRef.current?.showPicker?.() || dateInputRef.current?.click()}
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', fontSize: '0.72rem', color: '#9ca0a4', lineHeight: 1.4 }}
+            title="Pick a date"
+          >
+            📅
+          </button>
+          <input
+            ref={dateInputRef}
+            type="date"
+            max={today}
+            value={date}
+            onChange={e => e.target.value && onDateChange(e.target.value)}
+            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+          />
+        </div>
+        {!isToday && (
+          <button
+            onClick={() => onDateChange(today)}
+            style={{ background: 'none', border: '1px solid rgba(180,127,219,0.35)', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: '0.68rem', color: '#b47fdb', letterSpacing: '0.04em' }}
+          >
+            Back to today
+          </button>
+        )}
+      </div>
+
       {/* Steps ring */}
       <div className="card-lg fade-up stagger-1" style={{ padding: '20px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 20 }}>
         <div style={{ position: 'relative', width: 100, height: 100, flexShrink: 0 }}>
@@ -93,7 +138,7 @@ export function Activity({ activity, profile, date, onSave }) {
 
       {/* Entry form */}
       <div className="card fade-up stagger-3" style={{ padding: '16px' }}>
-        <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em', marginBottom: 14 }}>LOG ACTIVITY</div>
+        <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em', marginBottom: 14 }}>{isToday ? 'LOG ACTIVITY' : `${dayjs(date).format('MMM D').toUpperCase()} — ACTIVITY`}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           {[
             ['Steps', 'steps', 'number', '8500'],

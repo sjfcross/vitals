@@ -47,7 +47,7 @@ function AppInner() {
           />
         )}
         {tab === 'nutrition' && <Nutrition meals={meals} profile={profile} onDeleteMeal={deleteMeal} />}
-        {tab === 'activity' && <Activity activity={activity} profile={profile} date={date} onSave={saveActivity} />}
+        {tab === 'activity' && <Activity activity={activity} profile={profile} date={date} today={TODAY} onSave={saveActivity} onDateChange={setDate} />}
         {tab === 'weight' && (
           <Weight
             entries={entries} latest={latest} delta7={delta7} delta30={delta30}
