@@ -8,11 +8,9 @@ export function useWeight() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const since = dayjs().subtract(30, 'day').format('YYYY-MM-DD')
     const { data } = await supabase
       .from('weight')
       .select('*')
-      .gte('date', since)
       .order('date', { ascending: true })
       .order('time', { ascending: true })
     setEntries(data || [])
@@ -30,16 +28,19 @@ export function useWeight() {
   const latest = entries[entries.length - 1] || null
 
   const delta7 = (() => {
-    if (entries.length < 2) return null
+    if (entries.length < 2 || !latest) return null
     const cutoff = dayjs().subtract(7, 'day').format('YYYY-MM-DD')
     const old = entries.find(e => e.date >= cutoff)
-    if (!old || !latest) return null
+    if (!old || old.id === latest.id) return null
     return (latest.weight_kg - old.weight_kg).toFixed(1)
   })()
 
   const delta30 = (() => {
-    if (entries.length < 2) return null
-    return (latest.weight_kg - entries[0].weight_kg).toFixed(1)
+    if (entries.length < 2 || !latest) return null
+    const cutoff = dayjs().subtract(30, 'day').format('YYYY-MM-DD')
+    const old = entries.find(e => e.date >= cutoff)
+    if (!old || old.id === latest.id) return null
+    return (latest.weight_kg - old.weight_kg).toFixed(1)
   })()
 
   return { entries, loading, addEntry, latest, delta7, delta30, reload: load }

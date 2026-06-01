@@ -1,12 +1,19 @@
 import { useState } from 'react'
-import { LineChart, Line, XAxis, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts'
+import { LineChart, Line, XAxis, ResponsiveContainer, Tooltip } from 'recharts'
 import dayjs from 'dayjs'
+
+const RANGES = [
+  { id: '1w', label: '1W', days: 7 },
+  { id: '4w', label: '4W', days: 28 },
+  { id: 'all', label: 'All', days: null },
+]
 
 export function Weight({ entries, latest, delta7, delta30, profile, onAdd }) {
   const [kg, setKg] = useState('')
   const [time, setTime] = useState(dayjs().format('HH:mm'))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [range, setRange] = useState('4w')
 
   const height = profile?.height_cm
   const bmi = height && latest ? (latest.weight_kg / ((height / 100) ** 2)).toFixed(1) : null
@@ -14,14 +21,14 @@ export function Weight({ entries, latest, delta7, delta30, profile, onAdd }) {
     ? bmi < 18.5 ? 'Underweight' : bmi < 25 ? 'Normal' : bmi < 30 ? 'Overweight' : 'Obese'
     : null
 
-  const chartData = entries.map(e => ({
+  const selectedRange = RANGES.find(r => r.id === range)
+  const cutoff = selectedRange.days ? dayjs().subtract(selectedRange.days, 'day').format('YYYY-MM-DD') : null
+  const filtered = cutoff ? entries.filter(e => e.date >= cutoff) : entries
+
+  const chartData = filtered.map(e => ({
     date: dayjs(e.date).format('MMM D'),
     kg: parseFloat(e.weight_kg),
   }))
-
-  const weights = entries.map(e => parseFloat(e.weight_kg))
-  const minW = weights.length ? Math.min(...weights) - 0.5 : 0
-  const maxW = weights.length ? Math.max(...weights) + 0.5 : 100
 
   async function handleSave() {
     if (!kg) return
@@ -74,23 +81,46 @@ export function Weight({ entries, latest, delta7, delta30, profile, onAdd }) {
         <DeltaCard label="30-DAY CHANGE" value={delta30} />
       </div>
 
-      {/* Line chart */}
-      {chartData.length > 1 && (
+      {/* Chart */}
+      {entries.length > 1 && (
         <div className="card fade-up stagger-3" style={{ padding: '14px 16px', marginBottom: 12 }}>
-          <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em', marginBottom: 12 }}>30-DAY TREND</div>
-          <ResponsiveContainer width="100%" height={140}>
-            <LineChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
-              <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }} axisLine={false} tickLine={false}
-                interval={Math.floor(chartData.length / 5)} />
-              <Tooltip
-                contentStyle={{ background: '#1e2022', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: '0.78rem', fontFamily: 'DM Mono' }}
-                labelStyle={{ color: '#9ca0a4' }}
-                itemStyle={{ color: '#f0c96a' }}
-                formatter={v => [`${v} kg`, '']}
-              />
-              <Line type="monotone" dataKey="kg" stroke="#f0c96a" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#f0c96a' }} />
-            </LineChart>
-          </ResponsiveContainer>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em' }}>WEIGHT TREND</div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {RANGES.map(r => (
+                <button
+                  key={r.id}
+                  onClick={() => setRange(r.id)}
+                  style={{
+                    padding: '3px 9px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                    fontSize: '0.68rem', fontFamily: 'DM Mono, monospace', letterSpacing: '0.04em',
+                    background: range === r.id ? 'rgba(240,201,106,0.18)' : 'transparent',
+                    color: range === r.id ? '#f0c96a' : '#6b6f73',
+                    transition: 'color 0.15s, background 0.15s',
+                  }}
+                >{r.label}</button>
+              ))}
+            </div>
+          </div>
+          {chartData.length > 1 ? (
+            <ResponsiveContainer width="100%" height={140}>
+              <LineChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+                <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }} axisLine={false} tickLine={false}
+                  interval={Math.max(0, Math.floor(chartData.length / 5) - 1)} />
+                <Tooltip
+                  contentStyle={{ background: '#1e2022', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: '0.78rem', fontFamily: 'DM Mono' }}
+                  labelStyle={{ color: '#9ca0a4' }}
+                  itemStyle={{ color: '#f0c96a' }}
+                  formatter={v => [`${v} kg`, '']}
+                />
+                <Line type="monotone" dataKey="kg" stroke="#f0c96a" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#f0c96a' }} />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: '0.78rem', color: '#6b6f73' }}>Not enough data for this range</span>
+            </div>
+          )}
         </div>
       )}
 

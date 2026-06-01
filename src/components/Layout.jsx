@@ -5,6 +5,7 @@ const TABS = [
   { id: 'nutrition', label: 'Nutrition', icon: '⬡' },
   { id: 'activity', label: 'Activity', icon: '◈' },
   { id: 'weight', label: 'Weight', icon: '◷' },
+  { id: 'bp', label: 'BP', icon: '♡' },
 ]
 
 export function Layout({ tab, setTab, date, children }) {

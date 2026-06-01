@@ -94,14 +94,14 @@ src/
     useActivity.js     — step/activity data
     useWeight.js       — weight log data
   tabs/
-    Overview.jsx       — rings + weekly bar chart + today's meal list + Log meal CTA
+    Overview.jsx       — rings + weekly bar chart + meal list + date nav + Log meal CTA
     Nutrition.jsx      — calorie hero, macro donut, full nutrient table, per-meal breakdown
-    Activity.jsx       — step log
+    Activity.jsx       — step log + date nav
     Weight.jsx         — weight chart
   lib/
     supabase.js        — Supabase client init
   main.jsx             — app entry
-  App.jsx              — auth gate + tab routing
+  App.jsx              — auth gate + tab routing + date state
 ```
 
 ---
@@ -133,6 +133,22 @@ const description = text.match(/^description[:\s]+(.+)$/im)?.[1]?.trim() ?? ''
 
 ---
 
+## Date Navigation (Overview + Activity)
+
+`date` is state in `AppInner` (`useState(TODAY)`), defaulting to today's date. It's passed down to Overview and Activity as `date`, with `today` (the constant) and `onDateChange` (setter) alongside.
+
+Both tabs have an identical date nav row at the top:
+- Shows `TODAY` (accent colour) or `MMM D, YYYY` (muted) depending on selected date
+- 📅 button triggers a hidden `<input type="date" max={today}>` via a ref — opens native OS date picker
+- `Back to today` button appears when browsing a past day
+- Section labels update dynamically — e.g. `MAY 30 — MEALS` / `MAY 30 — ACTIVITY`
+
+`useMeals`, `useActivity`, and `useWeekMeals`/`useWeekActivity` are all already reactive to `date` — no changes needed in the hooks. Activity form resets via `useEffect` when `activity` changes (i.e. when date changes).
+
+Nutrition tab always shows the currently selected date's meals since it shares the same `meals` prop from App.
+
+---
+
 ## Overview Tab — Meal List
 
 Each meal card shows:
@@ -159,8 +175,8 @@ Uses `select('*')` — any new column added to the DB automatically comes back i
 ## What You Don't Touch
 
 - `Login.jsx`, `OnboardingSheet.jsx`
-- `useActivity.js`, `useWeight.js`, `useProfile.js`
-- `Activity.jsx`, `Weight.jsx`
+- `useWeight.js`, `useProfile.js`
+- `Weight.jsx`
 - `vite.config.js`, `index.css`
 - RLS policies
 - Any Supabase table other than `meals`

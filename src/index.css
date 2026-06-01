@@ -21,6 +21,8 @@
     --fibre: #5ecfcf;
     --steps: #b47fdb;
     --weight: #f0c96a;
+    --bp-sys: #e87a8a;
+    --bp-dia: #5ba4e6;
 
     --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
     --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);

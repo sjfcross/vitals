@@ -8,10 +8,12 @@ import { Overview } from './tabs/Overview'
 import { Nutrition } from './tabs/Nutrition'
 import { Activity } from './tabs/Activity'
 import { Weight } from './tabs/Weight'
+import { BloodPressure } from './tabs/BloodPressure'
 import { useProfile } from './hooks/useProfile'
 import { useMeals } from './hooks/useMeals'
 import { useActivity } from './hooks/useActivity'
 import { useWeight } from './hooks/useWeight'
+import { useBloodPressure } from './hooks/useBloodPressure'
 
 const TODAY = dayjs().format('YYYY-MM-DD')
 
@@ -24,6 +26,7 @@ function AppInner() {
   const { meals, addMeal, deleteMeal } = useMeals(date)
   const { activity, save: saveActivity } = useActivity(date)
   const { entries, latest, delta7, delta30, addEntry } = useWeight()
+  const { entries: bpEntries, latest: bpLatest, addEntry: addBpEntry } = useBloodPressure()
 
   useEffect(() => {
     if (!profileLoading && !profile) setShowOnboarding(true)
@@ -53,6 +56,9 @@ function AppInner() {
             entries={entries} latest={latest} delta7={delta7} delta30={delta30}
             profile={profile} onAdd={addEntry}
           />
+        )}
+        {tab === 'bp' && (
+          <BloodPressure entries={bpEntries} latest={bpLatest} onAdd={addBpEntry} />
         )}
       </Layout>
 
