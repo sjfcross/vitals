@@ -9,6 +9,7 @@ const RANGES = [
   { id: 'all', label: 'All', days: null },
 ]
 
+
 function classifyBP(sys, dia) {
   if (sys > 180 || dia > 120) return { label: 'Hypertensive Crisis', color: '#ff5a5a' }
   if (sys >= 140 || dia >= 90) return { label: 'High (Stage 2)', color: '#e8784a' }
@@ -73,6 +74,32 @@ export function BloodPressure({ entries, latest, onAdd }) {
   const yMin = 60
   const yMax = 220
   const yTicks = [60, 100, 140, 180, 220]
+
+  const renderTooltip = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null
+    const dateStr = dayjs(label).format('YYYY-MM-DD')
+    const dayReadings = filtered
+      .filter(e => e.date === dateStr)
+      .sort((a, b) => (a.time || '').localeCompare(b.time || ''))
+    if (!dayReadings.length) return null
+    return (
+      <div style={{ background: '#1e2022', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 12px', fontSize: '0.75rem', fontFamily: 'DM Mono, monospace', minWidth: 140 }}>
+        <div style={{ color: '#9ca0a4', marginBottom: 6, fontSize: '0.68rem' }}>{dayjs(label).format('MMM D, YYYY')}</div>
+        {dayReadings.map((r, i) => (
+          <div key={r.id} style={{ marginTop: i > 0 ? 6 : 0, paddingTop: i > 0 ? 6 : 0, borderTop: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+            <div style={{ color: '#6b6f73', fontSize: '0.62rem', marginBottom: 2 }}>{r.time?.slice(0, 5)}</div>
+            <div>
+              <span style={{ color: '#e87a8a' }}>{r.systolic}</span>
+              <span style={{ color: '#6b6f73', margin: '0 2px' }}>/</span>
+              <span style={{ color: '#5ba4e6' }}>{r.diastolic}</span>
+              <span style={{ color: '#9ca0a4', fontSize: '0.68rem', marginLeft: 4 }}>mmHg</span>
+              {r.pulse && <span style={{ color: '#9ca0a4', fontSize: '0.68rem', marginLeft: 6 }}>{r.pulse} bpm</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   async function handleSave() {
     if (!sys || !dia) return
@@ -207,13 +234,7 @@ export function BloodPressure({ entries, latest, onAdd }) {
                 <ReferenceLine yAxisId="left" y={140} stroke="rgba(255,255,255,0.05)" />
                 <ReferenceLine yAxisId="left" y={180} stroke="rgba(255,255,255,0.05)" />
                 <ReferenceLine yAxisId="left" y={220} stroke="rgba(255,255,255,0.05)" />
-                <Tooltip
-                  contentStyle={{ background: '#1e2022', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: '0.78rem', fontFamily: 'DM Mono' }}
-                  labelStyle={{ color: '#9ca0a4' }}
-                  labelFormatter={ts => dayjs(ts).format('MMM D, YYYY')}
-                  formatter={(v, name) => [`${v} mmHg`, name === 'sys' ? 'Systolic' : name === 'dia' ? 'Diastolic' : 'Reading']}
-                  itemStyle={{ color: '#f0eeea' }}
-                />
+                <Tooltip content={renderTooltip} />
                 <Line yAxisId="left" type="monotone" dataKey="sys" stroke="#e87a8a" strokeWidth={2}
                   dot={lineData.length === 1 ? { r: 4, fill: '#e87a8a' } : false}
                   activeDot={{ r: 4, fill: '#e87a8a' }} />
