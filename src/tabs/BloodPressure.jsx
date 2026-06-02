@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LineChart, Line, XAxis, ResponsiveContainer, Tooltip, ReferenceLine } from 'recharts'
+import { ComposedChart, Line, Scatter, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine } from 'recharts'
 import dayjs from 'dayjs'
 import { DoctorView } from '../components/DoctorView'
 
@@ -34,15 +34,48 @@ export function BloodPressure({ entries, latest, onAdd }) {
   const cutoff = selectedRange.days ? dayjs().subtract(selectedRange.days, 'day').format('YYYY-MM-DD') : null
   const filtered = cutoff ? entries.filter(e => e.date >= cutoff) : entries
 
-  // Count readings per date to decide label format
-  const dateCounts = filtered.reduce((acc, e) => { acc[e.date] = (acc[e.date] || 0) + 1; return acc }, {})
-  const chartData = filtered.map(e => ({
-    label: dateCounts[e.date] > 1
-      ? dayjs(`${e.date}T${e.time || '00:00'}`).format('MMM D HH:mm')
-      : dayjs(e.date).format('MMM D'),
-    sys: e.systolic,
-    dia: e.diastolic,
-  }))
+  // One data point per day for the line (first reading of the day)
+  const uniqueDates = [...new Set(filtered.map(e => e.date))].sort()
+  const lineData = uniqueDates.map(date => {
+    const dayReadings = filtered
+      .filter(e => e.date === date)
+      .sort((a, b) => (a.time || '').localeCompare(b.time || ''))
+    return { x: dayjs(date).valueOf(), sys: dayReadings[0].systolic, dia: dayReadings[0].diastolic }
+  })
+
+  // Extra readings (2nd+ per day) as scatter dots
+  const extraSys = [], extraDia = []
+  uniqueDates.forEach(date => {
+    const dayReadings = filtered
+      .filter(e => e.date === date)
+      .sort((a, b) => (a.time || '').localeCompare(b.time || ''))
+    dayReadings.slice(1).forEach(r => {
+      extraSys.push({ x: dayjs(date).valueOf(), y: r.systolic })
+      extraDia.push({ x: dayjs(date).valueOf(), y: r.diastolic })
+    })
+  })
+
+  // Stable X-axis domain covering the full selected range
+  const xMax = dayjs().endOf('day').valueOf()
+  const xMin = cutoff
+    ? dayjs(cutoff).valueOf()
+    : lineData.length > 0 ? lineData[0].x : dayjs().subtract(7, 'day').valueOf()
+
+  // Tick interval: daily for 1W, weekly for 4W+, auto for All
+  const spanDays = selectedRange.days || (lineData.length > 1
+    ? dayjs(xMax).diff(dayjs(lineData[0].x), 'day') : 7)
+  const tickStep = spanDays <= 7 ? 1 : spanDays <= 28 ? 7 : spanDays <= 90 ? 14 : 30
+  const xTicks = []
+  let t = dayjs(xMin)
+  while (t.valueOf() <= xMax) { xTicks.push(t.valueOf()); t = t.add(tickStep, 'day') }
+
+  // Y-axis domain from all values
+  const allVals = [
+    ...lineData.map(d => d.sys), ...lineData.map(d => d.dia),
+    ...extraSys.map(d => d.y), ...extraDia.map(d => d.y),
+  ].filter(v => v != null)
+  const yMin = allVals.length ? Math.min(...allVals) - 15 : 50
+  const yMax = allVals.length ? Math.max(...allVals) + 15 : 200
 
   async function handleSave() {
     if (!sys || !dia) return
@@ -150,26 +183,35 @@ export function BloodPressure({ entries, latest, onAdd }) {
               ))}
             </div>
           </div>
-          {chartData.length > 0 ? (
+          {lineData.length > 0 ? (
             <ResponsiveContainer width="100%" height={160}>
-              <LineChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
-                <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }} axisLine={false} tickLine={false}
-                  interval={Math.max(0, Math.floor(chartData.length / 5) - 1)} />
+              <ComposedChart data={lineData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+                <XAxis
+                  dataKey="x" type="number" scale="time"
+                  domain={[xMin, xMax]} ticks={xTicks}
+                  tickFormatter={ts => dayjs(ts).format('MMM D')}
+                  tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }}
+                  axisLine={false} tickLine={false}
+                />
+                <YAxis type="number" domain={[yMin, yMax]} hide />
                 <ReferenceLine y={120} stroke="rgba(240,201,106,0.2)" strokeDasharray="3 3" />
                 <ReferenceLine y={80} stroke="rgba(91,164,230,0.2)" strokeDasharray="3 3" />
                 <Tooltip
                   contentStyle={{ background: '#1e2022', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: '0.78rem', fontFamily: 'DM Mono' }}
                   labelStyle={{ color: '#9ca0a4' }}
-                  formatter={(v, name) => [`${v} mmHg`, name === 'sys' ? 'Systolic' : 'Diastolic']}
+                  labelFormatter={ts => dayjs(ts).format('MMM D, YYYY')}
+                  formatter={(v, name) => [`${v} mmHg`, name === 'sys' ? 'Systolic' : name === 'dia' ? 'Diastolic' : 'Reading']}
                   itemStyle={{ color: '#f0eeea' }}
                 />
                 <Line type="monotone" dataKey="sys" stroke="#e87a8a" strokeWidth={2}
-                  dot={chartData.length === 1 ? { r: 4, fill: '#e87a8a' } : false}
+                  dot={lineData.length === 1 ? { r: 4, fill: '#e87a8a' } : false}
                   activeDot={{ r: 4, fill: '#e87a8a' }} />
                 <Line type="monotone" dataKey="dia" stroke="#5ba4e6" strokeWidth={2}
-                  dot={chartData.length === 1 ? { r: 4, fill: '#5ba4e6' } : false}
+                  dot={lineData.length === 1 ? { r: 4, fill: '#5ba4e6' } : false}
                   activeDot={{ r: 4, fill: '#5ba4e6' }} />
-              </LineChart>
+                {extraSys.length > 0 && <Scatter data={extraSys} dataKey="y" fill="#e87a8a" opacity={0.4} name="Sys+" />}
+                {extraDia.length > 0 && <Scatter data={extraDia} dataKey="y" fill="#5ba4e6" opacity={0.4} name="Dia+" />}
+              </ComposedChart>
             </ResponsiveContainer>
           ) : (
             <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
