@@ -182,7 +182,7 @@ export function BloodPressure({ entries, latest, onAdd }) {
           </div>
           {lineData.length > 0 ? (
             <ResponsiveContainer width="100%" height={160}>
-              <ComposedChart data={lineData} margin={{ top: 4, right: 34, left: 4, bottom: 0 }}>
+              <ComposedChart data={lineData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
                 <XAxis
                   dataKey="x" type="number" scale="time"
                   domain={[xMin, xMax]} ticks={xTicks}
@@ -191,16 +191,16 @@ export function BloodPressure({ entries, latest, onAdd }) {
                   axisLine={false} tickLine={false}
                 />
                 <YAxis
-                  yAxisId="left" orientation="left"
+                  yAxisId="left" orientation="left" mirror={false}
                   type="number" domain={[yMin, yMax]} ticks={yTicks}
                   tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }}
-                  axisLine={false} tickLine={false} width={30}
+                  axisLine={false} tickLine={false} width={28}
                 />
                 <YAxis
                   yAxisId="right" orientation="right"
                   type="number" domain={[yMin, yMax]} ticks={yTicks}
                   tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }}
-                  axisLine={false} tickLine={false} width={30}
+                  axisLine={false} tickLine={false} width={28}
                 />
                 <ReferenceLine yAxisId="left" y={60}  stroke="rgba(255,255,255,0.05)" />
                 <ReferenceLine yAxisId="left" y={100} stroke="rgba(255,255,255,0.05)" />
@@ -220,6 +220,7 @@ export function BloodPressure({ entries, latest, onAdd }) {
                 <Line yAxisId="left" type="monotone" dataKey="dia" stroke="#5ba4e6" strokeWidth={2}
                   dot={lineData.length === 1 ? { r: 4, fill: '#5ba4e6' } : false}
                   activeDot={{ r: 4, fill: '#5ba4e6' }} />
+                <Line yAxisId="right" dataKey="sys" stroke="none" strokeWidth={0} dot={false} activeDot={false} legendType="none" tooltipType="none" />
                 {extraSys.length > 0 && <Scatter yAxisId="left" data={extraSys} dataKey="y" fill="#e87a8a" opacity={0.35} name="Sys+" shape={({ cx, cy }) => <circle cx={cx} cy={cy} r={2.5} fill="#e87a8a" opacity={0.45} />} />}
                 {extraDia.length > 0 && <Scatter yAxisId="left" data={extraDia} dataKey="y" fill="#5ba4e6" opacity={0.35} name="Dia+" shape={({ cx, cy }) => <circle cx={cx} cy={cy} r={2.5} fill="#5ba4e6" opacity={0.45} />} />}
               </ComposedChart>
