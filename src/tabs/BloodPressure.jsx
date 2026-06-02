@@ -17,6 +17,24 @@ function classifyBP(sys, dia) {
   return { label: 'Normal', color: '#6ec87a' }
 }
 
+const REF_VALS = new Set([80, 120, 180])
+
+function BpYTick({ x, y, payload, textAnchor }) {
+  const isRef = REF_VALS.has(payload.value)
+  return (
+    <text
+      x={x} y={y} dy={3}
+      textAnchor={textAnchor}
+      fill={isRef ? '#b0b5ba' : '#4a4f53'}
+      fontSize={isRef ? 10 : 8}
+      fontWeight={isRef ? 700 : 400}
+      fontFamily="DM Mono, monospace"
+    >
+      {payload.value}
+    </text>
+  )
+}
+
 export function BloodPressure({ entries, latest, onAdd }) {
   const [sys, setSys] = useState('')
   const [dia, setDia] = useState('')
@@ -196,12 +214,20 @@ export function BloodPressure({ entries, latest, onAdd }) {
                   axisLine={false} tickLine={false}
                 />
                 <YAxis
+                  yAxisId="left" orientation="left"
                   type="number" domain={[yMin, yMax]} ticks={yTicks}
-                  tick={{ fontSize: 8, fill: '#6b6f73', fontFamily: 'DM Mono' }}
-                  axisLine={false} tickLine={false} width={26}
+                  tick={<BpYTick textAnchor="end" />}
+                  axisLine={false} tickLine={false} width={30}
                 />
-                <ReferenceLine y={120} stroke="rgba(240,201,106,0.2)" strokeDasharray="3 3" />
-                <ReferenceLine y={80} stroke="rgba(91,164,230,0.2)" strokeDasharray="3 3" />
+                <YAxis
+                  yAxisId="right" orientation="right"
+                  type="number" domain={[yMin, yMax]} ticks={yTicks}
+                  tick={<BpYTick textAnchor="start" />}
+                  axisLine={false} tickLine={false} width={30}
+                />
+                <ReferenceLine yAxisId="left" y={180} stroke="rgba(255,90,90,0.25)" strokeDasharray="3 3" />
+                <ReferenceLine yAxisId="left" y={120} stroke="rgba(240,201,106,0.2)" strokeDasharray="3 3" />
+                <ReferenceLine yAxisId="left" y={80} stroke="rgba(91,164,230,0.2)" strokeDasharray="3 3" />
                 <Tooltip
                   contentStyle={{ background: '#1e2022', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: '0.78rem', fontFamily: 'DM Mono' }}
                   labelStyle={{ color: '#9ca0a4' }}
@@ -209,14 +235,14 @@ export function BloodPressure({ entries, latest, onAdd }) {
                   formatter={(v, name) => [`${v} mmHg`, name === 'sys' ? 'Systolic' : name === 'dia' ? 'Diastolic' : 'Reading']}
                   itemStyle={{ color: '#f0eeea' }}
                 />
-                <Line type="monotone" dataKey="sys" stroke="#e87a8a" strokeWidth={2}
+                <Line yAxisId="left" type="monotone" dataKey="sys" stroke="#e87a8a" strokeWidth={2}
                   dot={lineData.length === 1 ? { r: 4, fill: '#e87a8a' } : false}
                   activeDot={{ r: 4, fill: '#e87a8a' }} />
-                <Line type="monotone" dataKey="dia" stroke="#5ba4e6" strokeWidth={2}
+                <Line yAxisId="left" type="monotone" dataKey="dia" stroke="#5ba4e6" strokeWidth={2}
                   dot={lineData.length === 1 ? { r: 4, fill: '#5ba4e6' } : false}
                   activeDot={{ r: 4, fill: '#5ba4e6' }} />
-                {extraSys.length > 0 && <Scatter data={extraSys} dataKey="y" fill="#e87a8a" opacity={0.4} name="Sys+" />}
-                {extraDia.length > 0 && <Scatter data={extraDia} dataKey="y" fill="#5ba4e6" opacity={0.4} name="Dia+" />}
+                {extraSys.length > 0 && <Scatter yAxisId="left" data={extraSys} dataKey="y" fill="#e87a8a" opacity={0.4} name="Sys+" />}
+                {extraDia.length > 0 && <Scatter yAxisId="left" data={extraDia} dataKey="y" fill="#5ba4e6" opacity={0.4} name="Dia+" />}
               </ComposedChart>
             </ResponsiveContainer>
           ) : (
