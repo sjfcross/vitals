@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LineChart, Line, XAxis, ResponsiveContainer, Tooltip } from 'recharts'
+import { ComposedChart, Line, XAxis, YAxis, ReferenceLine, ResponsiveContainer, Tooltip } from 'recharts'
 import dayjs from 'dayjs'
 
 const RANGES = [
@@ -25,10 +25,57 @@ export function Weight({ entries, latest, delta7, delta30, profile, onAdd }) {
   const cutoff = selectedRange.days ? dayjs().subtract(selectedRange.days, 'day').format('YYYY-MM-DD') : null
   const filtered = cutoff ? entries.filter(e => e.date >= cutoff) : entries
 
-  const chartData = filtered.map(e => ({
-    date: dayjs(e.date).format('MMM D'),
-    kg: parseFloat(e.weight_kg),
-  }))
+  // One point per day (most recent reading if multiple)
+  const uniqueDates = [...new Set(filtered.map(e => e.date))].sort()
+  const lineData = uniqueDates.map(date => {
+    const dayReadings = filtered
+      .filter(e => e.date === date)
+      .sort((a, b) => (b.time || '').localeCompare(a.time || ''))
+    return { x: dayjs(date).valueOf(), kg: parseFloat(dayReadings[0].weight_kg) }
+  })
+
+  const xMax = dayjs().endOf('day').valueOf()
+  const xMin = cutoff
+    ? dayjs(cutoff).valueOf()
+    : lineData.length > 0 ? lineData[0].x : dayjs().subtract(28, 'day').valueOf()
+
+  const spanDays = selectedRange.days || (lineData.length > 1
+    ? dayjs(xMax).diff(dayjs(lineData[0].x), 'day') : 28)
+  const tickStep = spanDays <= 7 ? 1 : spanDays <= 28 ? 7 : spanDays <= 90 ? 14 : 30
+  const xTicks = []
+  let t = dayjs(xMin)
+  while (t.valueOf() <= xMax) { xTicks.push(t.valueOf()); t = t.add(tickStep, 'day') }
+
+  // Y axis: round to nearest 5 with padding
+  const weights = lineData.map(d => d.kg)
+  const rawMin = weights.length ? Math.min(...weights) : 60
+  const rawMax = weights.length ? Math.max(...weights) : 100
+  const pad = Math.max((rawMax - rawMin) * 0.3, 2)
+  const yMin = Math.floor((rawMin - pad) / 5) * 5
+  const yMax = Math.ceil((rawMax + pad) / 5) * 5
+  const yTicks = []
+  for (let v = yMin; v <= yMax; v += 5) yTicks.push(v)
+
+  const renderTooltip = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null
+    const dateStr = dayjs(label).format('YYYY-MM-DD')
+    const dayReadings = filtered.filter(e => e.date === dateStr)
+    if (!dayReadings.length) return null
+    return (
+      <div style={{ background: '#1e2022', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 12px', fontSize: '0.75rem', fontFamily: 'DM Mono, monospace', minWidth: 120 }}>
+        <div style={{ color: '#9ca0a4', marginBottom: 6, fontSize: '0.68rem' }}>{dayjs(label).format('MMM D, YYYY')}</div>
+        {dayReadings.map((r, i) => (
+          <div key={r.id} style={{ marginTop: i > 0 ? 6 : 0, paddingTop: i > 0 ? 6 : 0, borderTop: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+            {dayReadings.length > 1 && (
+              <div style={{ color: '#6b6f73', fontSize: '0.62rem', marginBottom: 2 }}>{r.time?.slice(0, 5)}</div>
+            )}
+            <span style={{ color: '#f0c96a' }}>{parseFloat(r.weight_kg).toFixed(1)}</span>
+            <span style={{ color: '#9ca0a4', fontSize: '0.68rem', marginLeft: 4 }}>kg</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   async function handleSave() {
     if (!kg) return
@@ -76,6 +123,13 @@ export function Weight({ entries, latest, delta7, delta30, profile, onAdd }) {
             </div>
           )}
         </div>
+        {latest && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: '0.7rem', color: '#6b6f73' }}>
+              {dayjs(latest.date).format('MMM D, YYYY')} at {latest.time?.slice(0, 5)}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Deltas */}
@@ -85,10 +139,10 @@ export function Weight({ entries, latest, delta7, delta30, profile, onAdd }) {
       </div>
 
       {/* Chart */}
-      {entries.length > 1 && (
+      {entries.length > 0 && (
         <div className="card fade-up stagger-3" style={{ padding: '14px 16px', marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em' }}>WEIGHT TREND</div>
+            <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em' }}>TREND</div>
             <div style={{ display: 'flex', gap: 4 }}>
               {RANGES.map(r => (
                 <button
@@ -105,23 +159,42 @@ export function Weight({ entries, latest, delta7, delta30, profile, onAdd }) {
               ))}
             </div>
           </div>
-          {chartData.length > 1 ? (
-            <ResponsiveContainer width="100%" height={140}>
-              <LineChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
-                <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }} axisLine={false} tickLine={false}
-                  interval={Math.max(0, Math.floor(chartData.length / 5) - 1)} />
-                <Tooltip
-                  contentStyle={{ background: '#1e2022', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: '0.78rem', fontFamily: 'DM Mono' }}
-                  labelStyle={{ color: '#9ca0a4' }}
-                  itemStyle={{ color: '#f0c96a' }}
-                  formatter={v => [`${v} kg`, '']}
+          {lineData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={160}>
+              <ComposedChart data={lineData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                <XAxis
+                  dataKey="x" type="number" scale="time"
+                  domain={[xMin, xMax]} ticks={xTicks}
+                  tickFormatter={ts => dayjs(ts).format('MMM D')}
+                  tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }}
+                  axisLine={false} tickLine={false}
                 />
-                <Line type="monotone" dataKey="kg" stroke="#f0c96a" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#f0c96a' }} />
-              </LineChart>
+                <YAxis
+                  orientation="left"
+                  type="number" domain={[yMin, yMax]} ticks={yTicks}
+                  tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }}
+                  axisLine={false} tickLine={false} width={28}
+                />
+                <YAxis
+                  yAxisId="right" orientation="right"
+                  type="number" domain={[yMin, yMax]} ticks={yTicks}
+                  tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }}
+                  axisLine={false} tickLine={false} width={28}
+                />
+                {yTicks.map(v => (
+                  <ReferenceLine key={v} y={v} stroke="rgba(255,255,255,0.05)" />
+                ))}
+                <Tooltip content={renderTooltip} />
+                <Line
+                  type="monotone" dataKey="kg" stroke="#f0c96a" strokeWidth={2}
+                  dot={lineData.length === 1 ? { r: 4, fill: '#f0c96a' } : false}
+                  activeDot={{ r: 4, fill: '#f0c96a' }}
+                />
+              </ComposedChart>
             </ResponsiveContainer>
           ) : (
-            <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: '0.78rem', color: '#6b6f73' }}>Not enough data for this range</span>
+            <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: '0.78rem', color: '#6b6f73' }}>No data for this range</span>
             </div>
           )}
         </div>
