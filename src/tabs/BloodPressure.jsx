@@ -17,23 +17,6 @@ function classifyBP(sys, dia) {
   return { label: 'Normal', color: '#6ec87a' }
 }
 
-const REF_VALS = new Set([80, 120, 180])
-
-function BpYTick({ x, y, payload, textAnchor }) {
-  const isRef = REF_VALS.has(payload.value)
-  return (
-    <text
-      x={x} y={y} dy={3}
-      textAnchor={textAnchor}
-      fill={isRef ? '#b0b5ba' : '#4a4f53'}
-      fontSize={isRef ? 10 : 8}
-      fontWeight={isRef ? 700 : 400}
-      fontFamily="DM Mono, monospace"
-    >
-      {payload.value}
-    </text>
-  )
-}
 
 export function BloodPressure({ entries, latest, onAdd }) {
   const [sys, setSys] = useState('')
@@ -87,15 +70,9 @@ export function BloodPressure({ entries, latest, onAdd }) {
   let t = dayjs(xMin)
   while (t.valueOf() <= xMax) { xTicks.push(t.valueOf()); t = t.add(tickStep, 'day') }
 
-  // Y-axis domain and ticks from all values
-  const allVals = [
-    ...lineData.map(d => d.sys), ...lineData.map(d => d.dia),
-    ...extraSys.map(d => d.y), ...extraDia.map(d => d.y),
-  ].filter(v => v != null)
-  const yMin = allVals.length ? Math.floor((Math.min(...allVals) - 10) / 10) * 10 : 50
-  const yMax = allVals.length ? Math.ceil((Math.max(...allVals) + 10) / 10) * 10 : 200
-  const yTicks = []
-  for (let v = Math.ceil(yMin / 20) * 20; v <= yMax; v += 20) yTicks.push(v)
+  const yMin = 60
+  const yMax = 220
+  const yTicks = [60, 100, 140, 180, 220]
 
   async function handleSave() {
     if (!sys || !dia) return
@@ -216,18 +193,20 @@ export function BloodPressure({ entries, latest, onAdd }) {
                 <YAxis
                   yAxisId="left" orientation="left"
                   type="number" domain={[yMin, yMax]} ticks={yTicks}
-                  tick={<BpYTick textAnchor="end" />}
+                  tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }}
                   axisLine={false} tickLine={false} width={30}
                 />
                 <YAxis
                   yAxisId="right" orientation="right"
                   type="number" domain={[yMin, yMax]} ticks={yTicks}
-                  tick={<BpYTick textAnchor="start" />}
+                  tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }}
                   axisLine={false} tickLine={false} width={30}
                 />
-                <ReferenceLine yAxisId="left" y={180} stroke="rgba(255,90,90,0.25)" strokeDasharray="3 3" />
-                <ReferenceLine yAxisId="left" y={120} stroke="rgba(240,201,106,0.2)" strokeDasharray="3 3" />
-                <ReferenceLine yAxisId="left" y={80} stroke="rgba(91,164,230,0.2)" strokeDasharray="3 3" />
+                <ReferenceLine yAxisId="left" y={60}  stroke="rgba(255,255,255,0.05)" />
+                <ReferenceLine yAxisId="left" y={100} stroke="rgba(255,255,255,0.05)" />
+                <ReferenceLine yAxisId="left" y={140} stroke="rgba(255,255,255,0.05)" />
+                <ReferenceLine yAxisId="left" y={180} stroke="rgba(255,255,255,0.05)" />
+                <ReferenceLine yAxisId="left" y={220} stroke="rgba(255,255,255,0.05)" />
                 <Tooltip
                   contentStyle={{ background: '#1e2022', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: '0.78rem', fontFamily: 'DM Mono' }}
                   labelStyle={{ color: '#9ca0a4' }}
