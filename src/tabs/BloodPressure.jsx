@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { LineChart, Line, XAxis, ResponsiveContainer, Tooltip, ReferenceLine } from 'recharts'
 import dayjs from 'dayjs'
+import { DoctorView } from '../components/DoctorView'
 
 const RANGES = [
   { id: '1w', label: '1W', days: 7 },
@@ -25,6 +26,7 @@ export function BloodPressure({ entries, latest, onAdd }) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [range, setRange] = useState('4w')
+  const [doctorView, setDoctorView] = useState(false)
 
   const classification = latest ? classifyBP(latest.systolic, latest.diastolic) : null
 
@@ -32,8 +34,12 @@ export function BloodPressure({ entries, latest, onAdd }) {
   const cutoff = selectedRange.days ? dayjs().subtract(selectedRange.days, 'day').format('YYYY-MM-DD') : null
   const filtered = cutoff ? entries.filter(e => e.date >= cutoff) : entries
 
+  // Count readings per date to decide label format
+  const dateCounts = filtered.reduce((acc, e) => { acc[e.date] = (acc[e.date] || 0) + 1; return acc }, {})
   const chartData = filtered.map(e => ({
-    date: dayjs(e.date).format('MMM D'),
+    label: dateCounts[e.date] > 1
+      ? dayjs(`${e.date}T${e.time || '00:00'}`).format('MMM D HH:mm')
+      : dayjs(e.date).format('MMM D'),
     sys: e.systolic,
     dia: e.diastolic,
   }))
@@ -112,7 +118,7 @@ export function BloodPressure({ entries, latest, onAdd }) {
       </div>
 
       {/* Chart */}
-      {entries.length > 1 && (
+      {entries.length > 0 && (
         <div className="card fade-up stagger-2" style={{ padding: '14px 16px', marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -144,10 +150,10 @@ export function BloodPressure({ entries, latest, onAdd }) {
               ))}
             </div>
           </div>
-          {chartData.length > 1 ? (
+          {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={160}>
               <LineChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
-                <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }} axisLine={false} tickLine={false}
+                <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }} axisLine={false} tickLine={false}
                   interval={Math.max(0, Math.floor(chartData.length / 5) - 1)} />
                 <ReferenceLine y={120} stroke="rgba(240,201,106,0.2)" strokeDasharray="3 3" />
                 <ReferenceLine y={80} stroke="rgba(91,164,230,0.2)" strokeDasharray="3 3" />
@@ -157,13 +163,17 @@ export function BloodPressure({ entries, latest, onAdd }) {
                   formatter={(v, name) => [`${v} mmHg`, name === 'sys' ? 'Systolic' : 'Diastolic']}
                   itemStyle={{ color: '#f0eeea' }}
                 />
-                <Line type="monotone" dataKey="sys" stroke="#e87a8a" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#e87a8a' }} />
-                <Line type="monotone" dataKey="dia" stroke="#5ba4e6" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#5ba4e6' }} />
+                <Line type="monotone" dataKey="sys" stroke="#e87a8a" strokeWidth={2}
+                  dot={chartData.length === 1 ? { r: 4, fill: '#e87a8a' } : false}
+                  activeDot={{ r: 4, fill: '#e87a8a' }} />
+                <Line type="monotone" dataKey="dia" stroke="#5ba4e6" strokeWidth={2}
+                  dot={chartData.length === 1 ? { r: 4, fill: '#5ba4e6' } : false}
+                  activeDot={{ r: 4, fill: '#5ba4e6' }} />
               </LineChart>
             </ResponsiveContainer>
           ) : (
             <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: '0.78rem', color: '#6b6f73' }}>Not enough data for this range</span>
+              <span style={{ fontSize: '0.78rem', color: '#6b6f73' }}>No data for this range</span>
             </div>
           )}
         </div>
@@ -198,6 +208,20 @@ export function BloodPressure({ entries, latest, onAdd }) {
           {saving ? 'Saving…' : saved ? '✓ Logged' : 'Log reading'}
         </button>
       </div>
+
+      {/* Doctor view button */}
+      {entries.length > 0 && (
+        <button
+          onClick={() => setDoctorView(true)}
+          style={{
+            width: '100%', padding: '13px', borderRadius: 12, border: '1px solid rgba(91,164,230,0.3)',
+            background: 'rgba(91,164,230,0.07)', color: '#5ba4e6', fontSize: '0.85rem',
+            fontFamily: 'inherit', cursor: 'pointer', marginBottom: 12, letterSpacing: '0.02em',
+          }}
+        >
+          Show at Doctor ›
+        </button>
+      )}
 
       {/* Recent readings */}
       {entries.length > 0 && (
@@ -235,6 +259,8 @@ export function BloodPressure({ entries, latest, onAdd }) {
           </div>
         </div>
       )}
+
+      {doctorView && <DoctorView entries={entries} onClose={() => setDoctorView(false)} />}
     </div>
   )
 }
