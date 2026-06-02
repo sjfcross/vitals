@@ -13,7 +13,7 @@ export function Weight({ entries, latest, delta7, delta30, profile, onAdd }) {
   const [time, setTime] = useState(dayjs().format('HH:mm'))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [range, setRange] = useState('4w')
+  const [range, setRange] = useState('1w')
 
   const height = profile?.height_cm
   const bmi = height && latest ? (latest.weight_kg / ((height / 100) ** 2)).toFixed(1) : null
@@ -37,7 +37,7 @@ export function Weight({ entries, latest, delta7, delta30, profile, onAdd }) {
   const xMax = dayjs().endOf('day').valueOf()
   const xMin = cutoff
     ? dayjs(cutoff).valueOf()
-    : lineData.length > 0 ? lineData[0].x : dayjs().subtract(28, 'day').valueOf()
+    : lineData.length > 0 ? lineData[0].x : dayjs().subtract(7, 'day').valueOf()
 
   const spanDays = selectedRange.days || (lineData.length > 1
     ? dayjs(xMax).diff(dayjs(lineData[0].x), 'day') : 28)
@@ -170,7 +170,7 @@ export function Weight({ entries, latest, delta7, delta30, profile, onAdd }) {
                   axisLine={false} tickLine={false}
                 />
                 <YAxis
-                  orientation="left"
+                  yAxisId="left" orientation="left"
                   type="number" domain={[yMin, yMax]} ticks={yTicks}
                   tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }}
                   axisLine={false} tickLine={false} width={28}
@@ -182,14 +182,15 @@ export function Weight({ entries, latest, delta7, delta30, profile, onAdd }) {
                   axisLine={false} tickLine={false} width={28}
                 />
                 {yTicks.map(v => (
-                  <ReferenceLine key={v} y={v} stroke="rgba(255,255,255,0.05)" />
+                  <ReferenceLine key={v} yAxisId="left" y={v} stroke="rgba(255,255,255,0.05)" />
                 ))}
                 <Tooltip content={renderTooltip} />
                 <Line
-                  type="monotone" dataKey="kg" stroke="#f0c96a" strokeWidth={2}
+                  yAxisId="left" type="monotone" dataKey="kg" stroke="#f0c96a" strokeWidth={2}
                   dot={lineData.length === 1 ? { r: 4, fill: '#f0c96a' } : false}
                   activeDot={{ r: 4, fill: '#f0c96a' }}
                 />
+                <Line yAxisId="right" dataKey="kg" stroke="none" strokeWidth={0} dot={false} activeDot={false} legendType="none" tooltipType="none" />
               </ComposedChart>
             </ResponsiveContainer>
           ) : (
