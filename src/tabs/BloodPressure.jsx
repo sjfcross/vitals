@@ -26,7 +26,7 @@ export function BloodPressure({ entries, latest, onAdd }) {
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [range, setRange] = useState('4w')
+  const [range, setRange] = useState('1w')
   const [doctorView, setDoctorView] = useState(false)
 
   const classification = latest ? classifyBP(latest.systolic, latest.diastolic) : null
@@ -182,7 +182,7 @@ export function BloodPressure({ entries, latest, onAdd }) {
           </div>
           {lineData.length > 0 ? (
             <ResponsiveContainer width="100%" height={160}>
-              <ComposedChart data={lineData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+              <ComposedChart data={lineData} margin={{ top: 4, right: 34, left: 4, bottom: 0 }}>
                 <XAxis
                   dataKey="x" type="number" scale="time"
                   domain={[xMin, xMax]} ticks={xTicks}
@@ -220,13 +220,19 @@ export function BloodPressure({ entries, latest, onAdd }) {
                 <Line yAxisId="left" type="monotone" dataKey="dia" stroke="#5ba4e6" strokeWidth={2}
                   dot={lineData.length === 1 ? { r: 4, fill: '#5ba4e6' } : false}
                   activeDot={{ r: 4, fill: '#5ba4e6' }} />
-                {extraSys.length > 0 && <Scatter yAxisId="left" data={extraSys} dataKey="y" fill="#e87a8a" opacity={0.4} name="Sys+" />}
-                {extraDia.length > 0 && <Scatter yAxisId="left" data={extraDia} dataKey="y" fill="#5ba4e6" opacity={0.4} name="Dia+" />}
+                {extraSys.length > 0 && <Scatter yAxisId="left" data={extraSys} dataKey="y" fill="#e87a8a" opacity={0.35} name="Sys+" shape={({ cx, cy }) => <circle cx={cx} cy={cy} r={2.5} fill="#e87a8a" opacity={0.45} />} />}
+                {extraDia.length > 0 && <Scatter yAxisId="left" data={extraDia} dataKey="y" fill="#5ba4e6" opacity={0.35} name="Dia+" shape={({ cx, cy }) => <circle cx={cx} cy={cy} r={2.5} fill="#5ba4e6" opacity={0.45} />} />}
               </ComposedChart>
             </ResponsiveContainer>
           ) : (
             <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ fontSize: '0.78rem', color: '#6b6f73' }}>No data for this range</span>
+            </div>
+          )}
+          {(extraSys.length > 0 || extraDia.length > 0) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#9ca0a4', opacity: 0.5 }} />
+              <span style={{ fontSize: '0.62rem', color: '#6b6f73', letterSpacing: '0.03em' }}>consecutive same-day readings</span>
             </div>
           )}
         </div>
