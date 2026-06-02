@@ -3,7 +3,7 @@ import { BarChart, Bar, Cell, ResponsiveContainer } from 'recharts'
 import dayjs from 'dayjs'
 import { useWeekActivity } from '../hooks/useActivity'
 
-export function Activity({ activity, profile, date, today, onSave, onDateChange }) {
+export function Activity({ activity, profile, date, today, onSave, onDateChange, onSync }) {
   const [form, setForm] = useState({
     steps: activity?.steps || '',
     km: activity?.km || '',
@@ -14,6 +14,8 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange 
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState(null)
   const dateInputRef = useRef(null)
   const { weekData, reload: reloadWeek } = useWeekActivity(date)
   const isToday = date === today
@@ -64,6 +66,22 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange 
     }
   }
 
+  async function handleSync() {
+    setSyncing(true)
+    setSyncMsg(null)
+    try {
+      const data = await onSync()
+      setSyncMsg(data.synced > 0 ? `Synced ${data.synced} day${data.synced !== 1 ? 's' : ''}` : 'No new data')
+      reloadWeek()
+    } catch (err) {
+      setSyncMsg('Sync failed')
+      console.error('VITALS: sync error', err)
+    } finally {
+      setSyncing(false)
+      setTimeout(() => setSyncMsg(null), 3000)
+    }
+  }
+
   return (
     <div style={{ padding: '16px 16px 100px' }}>
 
@@ -89,14 +107,23 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange 
             style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
           />
         </div>
-        {!isToday && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {!isToday && (
+            <button
+              onClick={() => handleDateChange(today)}
+              style={{ background: 'none', border: '1px solid rgba(180,127,219,0.35)', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: '0.68rem', color: '#b47fdb', letterSpacing: '0.04em' }}
+            >
+              Back to today
+            </button>
+          )}
           <button
-            onClick={() => handleDateChange(today)}
-            style={{ background: 'none', border: '1px solid rgba(180,127,219,0.35)', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: '0.68rem', color: '#b47fdb', letterSpacing: '0.04em' }}
+            onClick={handleSync}
+            disabled={syncing}
+            style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '3px 9px', cursor: syncing ? 'default' : 'pointer', fontSize: '0.68rem', color: syncMsg ? '#7ec87e' : '#9ca0a4', letterSpacing: '0.04em', opacity: syncing ? 0.6 : 1 }}
           >
-            Back to today
+            {syncing ? 'Syncing…' : syncMsg ?? 'Sync Fitbit'}
           </button>
-        )}
+        </div>
       </div>
 
       {/* Steps ring */}

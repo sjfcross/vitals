@@ -52,7 +52,16 @@ function AppInner() {
 
   const { profile, loading: profileLoading, save: saveProfile } = useProfile()
   const { meals, addMeal, deleteMeal } = useMeals(date)
-  const { activity, save: saveActivity } = useActivity(date)
+  const { activity, save: saveActivity, reload: reloadActivity } = useActivity(date)
+
+  async function syncSteps() {
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-steps`
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error ?? 'Sync failed')
+    await reloadActivity()
+    return data
+  }
   const { entries, latest, delta7, delta30, addEntry } = useWeight()
   const { entries: bpEntries, latest: bpLatest, addEntry: addBpEntry } = useBloodPressure()
 
@@ -78,7 +87,7 @@ function AppInner() {
           />
         )}
         {tab === 'nutrition' && <Nutrition meals={meals} profile={profile} onDeleteMeal={deleteMeal} />}
-        {tab === 'activity' && <Activity activity={activity} profile={profile} date={date} today={today} onSave={saveActivity} onDateChange={setDate} />}
+        {tab === 'activity' && <Activity activity={activity} profile={profile} date={date} today={today} onSave={saveActivity} onDateChange={setDate} onSync={syncSteps} />}
         {tab === 'weight' && (
           <Weight
             entries={entries} latest={latest} delta7={delta7} delta30={delta30}
