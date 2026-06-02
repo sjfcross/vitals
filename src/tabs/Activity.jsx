@@ -11,10 +11,11 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange 
     workout_type: activity?.workout_type || '',
     workout_duration_min: activity?.workout_duration_min || '',
   })
+  const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const dateInputRef = useRef(null)
-  const weekData = useWeekActivity(date)
+  const { weekData, reload: reloadWeek } = useWeekActivity(date)
   const isToday = date === today
 
   useEffect(() => {
@@ -25,16 +26,27 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange 
       workout_type: activity?.workout_type || '',
       workout_duration_min: activity?.workout_duration_min || '',
     })
+    setDirty(false)
   }, [activity])
 
   const steps = activity?.steps || 0
   const target = profile?.target_steps || 10000
 
-  function set(field) { return e => setForm(f => ({ ...f, [field]: e.target.value })) }
+  function set(field) {
+    return e => {
+      setForm(f => ({ ...f, [field]: e.target.value }))
+      setDirty(true)
+    }
+  }
+
+  function handleDateChange(newDate) {
+    if (dirty && !window.confirm('You have unsaved changes. Discard them?')) return
+    onDateChange(newDate)
+  }
 
   async function handleSave() {
     setSaving(true)
-    await onSave({
+    const { error } = await onSave({
       steps: form.steps ? parseInt(form.steps) : null,
       km: form.km ? parseFloat(form.km) : null,
       active_minutes: form.active_minutes ? parseInt(form.active_minutes) : null,
@@ -42,8 +54,14 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange 
       workout_duration_min: form.workout_duration_min ? parseInt(form.workout_duration_min) : null,
     })
     setSaving(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    if (!error) {
+      setDirty(false)
+      setSaved(true)
+      reloadWeek()
+      setTimeout(() => setSaved(false), 2000)
+    } else {
+      console.error('VITALS: save activity error', error)
+    }
   }
 
   return (
@@ -67,13 +85,13 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange 
             type="date"
             max={today}
             value={date}
-            onChange={e => e.target.value && onDateChange(e.target.value)}
+            onChange={e => e.target.value && handleDateChange(e.target.value)}
             style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
           />
         </div>
         {!isToday && (
           <button
-            onClick={() => onDateChange(today)}
+            onClick={() => handleDateChange(today)}
             style={{ background: 'none', border: '1px solid rgba(180,127,219,0.35)', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: '0.68rem', color: '#b47fdb', letterSpacing: '0.04em' }}
           >
             Back to today

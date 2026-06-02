@@ -10,18 +10,24 @@ export function useProfile() {
   }, [])
 
   async function load() {
-    const { data } = await supabase.from('user_profile').select('*').limit(1).single()
+    const { data, error } = await supabase.from('user_profile').select('*').limit(1).single()
+    // PGRST116 = "no rows" — expected for new users, not a real error
+    if (error && error.code !== 'PGRST116') {
+      console.error('VITALS: profile load error', error)
+    }
     setProfile(data)
     setLoading(false)
   }
 
   async function save(values) {
     if (profile?.id) {
-      const { data } = await supabase.from('user_profile').update(values).eq('id', profile.id).select().single()
-      setProfile(data)
+      const { data, error } = await supabase.from('user_profile').update(values).eq('id', profile.id).select().single()
+      if (!error) setProfile(data)
+      return { error }
     } else {
-      const { data } = await supabase.from('user_profile').insert(values).select().single()
-      setProfile(data)
+      const { data, error } = await supabase.from('user_profile').insert(values).select().single()
+      if (!error) setProfile(data)
+      return { error }
     }
   }
 

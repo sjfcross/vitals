@@ -26,8 +26,13 @@ export function useMeals(date) {
   }
 
   async function deleteMeal(id) {
-    await supabase.from('meals').delete().eq('id', id)
+    const snapshot = meals
     setMeals(prev => prev.filter(m => m.id !== id))
+    const { error } = await supabase.from('meals').delete().eq('id', id)
+    if (error) {
+      setMeals(snapshot)
+      console.error('VITALS: deleteMeal failed', error)
+    }
   }
 
   return { meals, loading, addMeal, deleteMeal, reload: load }
@@ -36,7 +41,7 @@ export function useMeals(date) {
 export function useWeekMeals(date) {
   const [weekData, setWeekData] = useState([])
 
-  useEffect(() => {
+  const load = useCallback(() => {
     const start = dayjs(date).startOf('week').format('YYYY-MM-DD')
     const end = dayjs(date).endOf('week').format('YYYY-MM-DD')
     supabase
@@ -58,5 +63,7 @@ export function useWeekMeals(date) {
       })
   }, [date])
 
-  return weekData
+  useEffect(() => { load() }, [load])
+
+  return { weekData, reload: load }
 }

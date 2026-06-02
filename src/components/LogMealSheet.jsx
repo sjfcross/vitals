@@ -193,7 +193,7 @@ export function LogMealSheet({ onClose, onSave, date }) {
               <div style={{ background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: 10, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {EMOJIS.map(e => (
                   <button key={e} onClick={() => { setForm(f => ({ ...f, emoji: e })); setEmojiOpen(false) }}
-                    style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', padding: 3, borderRadius: 4,
+                    style={{ border: 'none', fontSize: '1.3rem', cursor: 'pointer', padding: 3, borderRadius: 4,
                       background: form.emoji === e ? 'rgba(255,255,255,0.1)' : 'none' }}>
                     {e}
                   </button>

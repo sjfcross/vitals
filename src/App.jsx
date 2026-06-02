@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Component } from 'react'
 import dayjs from 'dayjs'
 import { supabase } from './lib/supabase'
 import { Login } from './components/Login'
@@ -15,12 +15,40 @@ import { useActivity } from './hooks/useActivity'
 import { useWeight } from './hooks/useWeight'
 import { useBloodPressure } from './hooks/useBloodPressure'
 
-const TODAY = dayjs().format('YYYY-MM-DD')
+class ErrorBoundary extends Component {
+  state = { error: null }
+  static getDerivedStateFromError(error) { return { error } }
+  componentDidCatch(error) { console.error('VITALS: unhandled error', error) }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0e0f11', gap: 16, padding: 24 }}>
+          <div className="mono" style={{ color: '#e8784a', fontSize: '0.8rem', letterSpacing: '0.1em' }}>SOMETHING WENT WRONG</div>
+          <div style={{ color: '#6b6f73', fontSize: '0.78rem', textAlign: 'center' }}>{this.state.error.message}</div>
+          <button onClick={() => this.setState({ error: null })} style={{ color: '#9ca0a4', background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.8rem' }}>
+            Retry
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 function AppInner() {
+  const [today, setToday] = useState(() => dayjs().format('YYYY-MM-DD'))
   const [tab, setTab] = useState('overview')
   const [showOnboarding, setShowOnboarding] = useState(false)
-  const [date, setDate] = useState(TODAY)
+  const [date, setDate] = useState(() => dayjs().format('YYYY-MM-DD'))
+
+  // Recompute "today" when the user returns to the app (handles staying open past midnight)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (!document.hidden) setToday(dayjs().format('YYYY-MM-DD'))
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [])
 
   const { profile, loading: profileLoading, save: saveProfile } = useProfile()
   const { meals, addMeal, deleteMeal } = useMeals(date)
@@ -46,11 +74,11 @@ function AppInner() {
         {tab === 'overview' && (
           <Overview
             meals={meals} activity={activity} profile={profile}
-            date={date} today={TODAY} onAddMeal={addMeal} onDeleteMeal={deleteMeal} onDateChange={setDate}
+            date={date} today={today} onAddMeal={addMeal} onDeleteMeal={deleteMeal} onDateChange={setDate}
           />
         )}
         {tab === 'nutrition' && <Nutrition meals={meals} profile={profile} onDeleteMeal={deleteMeal} />}
-        {tab === 'activity' && <Activity activity={activity} profile={profile} date={date} today={TODAY} onSave={saveActivity} onDateChange={setDate} />}
+        {tab === 'activity' && <Activity activity={activity} profile={profile} date={date} today={today} onSave={saveActivity} onDateChange={setDate} />}
         {tab === 'weight' && (
           <Weight
             entries={entries} latest={latest} delta7={delta7} delta30={delta30}
@@ -101,5 +129,9 @@ export default function App() {
 
   if (!session) return <Login />
 
-  return <AppInner />
+  return (
+    <ErrorBoundary>
+      <AppInner />
+    </ErrorBoundary>
+  )
 }

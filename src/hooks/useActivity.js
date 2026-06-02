@@ -17,11 +17,13 @@ export function useActivity(date) {
 
   async function save(values) {
     if (activity?.id) {
-      const { data } = await supabase.from('activity').update(values).eq('id', activity.id).select().single()
-      setActivity(data)
+      const { data, error } = await supabase.from('activity').update(values).eq('id', activity.id).select().single()
+      if (!error) setActivity(data)
+      return { error }
     } else {
-      const { data } = await supabase.from('activity').insert({ date, ...values }).select().single()
-      setActivity(data)
+      const { data, error } = await supabase.from('activity').insert({ date, ...values }).select().single()
+      if (!error) setActivity(data)
+      return { error }
     }
   }
 
@@ -31,7 +33,7 @@ export function useActivity(date) {
 export function useWeekActivity(date) {
   const [weekData, setWeekData] = useState([])
 
-  useEffect(() => {
+  const load = useCallback(() => {
     const start = dayjs(date).startOf('week').format('YYYY-MM-DD')
     const end = dayjs(date).endOf('week').format('YYYY-MM-DD')
     supabase
@@ -51,5 +53,7 @@ export function useWeekActivity(date) {
       })
   }, [date])
 
-  return weekData
+  useEffect(() => { load() }, [load])
+
+  return { weekData, reload: load }
 }

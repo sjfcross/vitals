@@ -5,14 +5,10 @@ import { CircularRing } from '../components/CircularRing'
 import { LogMealSheet } from '../components/LogMealSheet'
 import { useWeekMeals } from '../hooks/useMeals'
 
-function handleDelete(id, name, onDeleteMeal) {
-  if (window.confirm(`Delete "${name}"?`)) onDeleteMeal(id)
-}
-
 export function Overview({ meals, activity, profile, date, today, onAddMeal, onDeleteMeal, onDateChange }) {
   const [showLog, setShowLog] = useState(false)
   const dateInputRef = useRef(null)
-  const weekData = useWeekMeals(date)
+  const { weekData, reload: reloadWeek } = useWeekMeals(date)
   const isToday = date === today
 
   const targets = {
@@ -30,6 +26,19 @@ export function Overview({ meals, activity, profile, date, today, onAddMeal, onD
 
   const steps = activity?.steps || 0
   const km = activity?.km || (steps * 0.00075).toFixed(2)
+
+  async function handleAddMeal(meal) {
+    const result = await onAddMeal(meal)
+    reloadWeek()
+    return result
+  }
+
+  function handleDeleteMeal(id, name) {
+    if (window.confirm(`Delete "${name}"?`)) {
+      onDeleteMeal(id)
+      reloadWeek()
+    }
+  }
 
   return (
     <div style={{ padding: '0 16px 100px' }}>
@@ -73,7 +82,7 @@ export function Overview({ meals, activity, profile, date, today, onAddMeal, onD
         <CircularRing label="Protein" value={Math.round(totals.protein)} target={targets.protein} color="var(--protein)" unit="g" />
       </div>
 
-      {/* Steps + Weight row */}
+      {/* Steps + Active row */}
       <div className="fade-up stagger-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10, marginTop: 10 }}>
         <div className="card" style={{ padding: '14px 16px' }}>
           <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em', marginBottom: 8 }}>STEPS</div>
@@ -155,7 +164,7 @@ export function Overview({ meals, activity, profile, date, today, onAddMeal, onD
                     {m.sodium_mg && <div className="mono" style={{ fontSize: '0.72rem', color: '#5ba4e6' }}>{m.sodium_mg}mg Na</div>}
                   </div>
                   <button
-                    onClick={() => handleDelete(m.id, m.name, onDeleteMeal)}
+                    onClick={() => handleDeleteMeal(m.id, m.name)}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', fontSize: '0.85rem', color: '#6b6f73', lineHeight: 1 }}
                     title="Delete meal"
                   >
@@ -185,7 +194,7 @@ export function Overview({ meals, activity, profile, date, today, onAddMeal, onD
         <LogMealSheet
           date={date}
           onClose={() => setShowLog(false)}
-          onSave={onAddMeal}
+          onSave={handleAddMeal}
         />
       )}
     </div>
