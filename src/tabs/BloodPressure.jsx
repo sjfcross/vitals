@@ -69,13 +69,15 @@ export function BloodPressure({ entries, latest, onAdd }) {
   let t = dayjs(xMin)
   while (t.valueOf() <= xMax) { xTicks.push(t.valueOf()); t = t.add(tickStep, 'day') }
 
-  // Y-axis domain from all values
+  // Y-axis domain and ticks from all values
   const allVals = [
     ...lineData.map(d => d.sys), ...lineData.map(d => d.dia),
     ...extraSys.map(d => d.y), ...extraDia.map(d => d.y),
   ].filter(v => v != null)
-  const yMin = allVals.length ? Math.min(...allVals) - 15 : 50
-  const yMax = allVals.length ? Math.max(...allVals) + 15 : 200
+  const yMin = allVals.length ? Math.floor((Math.min(...allVals) - 10) / 10) * 10 : 50
+  const yMax = allVals.length ? Math.ceil((Math.max(...allVals) + 10) / 10) * 10 : 200
+  const yTicks = []
+  for (let v = Math.ceil(yMin / 20) * 20; v <= yMax; v += 20) yTicks.push(v)
 
   async function handleSave() {
     if (!sys || !dia) return
@@ -193,7 +195,11 @@ export function BloodPressure({ entries, latest, onAdd }) {
                   tick={{ fontSize: 9, fill: '#6b6f73', fontFamily: 'DM Mono' }}
                   axisLine={false} tickLine={false}
                 />
-                <YAxis type="number" domain={[yMin, yMax]} hide />
+                <YAxis
+                  type="number" domain={[yMin, yMax]} ticks={yTicks}
+                  tick={{ fontSize: 8, fill: '#6b6f73', fontFamily: 'DM Mono' }}
+                  axisLine={false} tickLine={false} width={26}
+                />
                 <ReferenceLine y={120} stroke="rgba(240,201,106,0.2)" strokeDasharray="3 3" />
                 <ReferenceLine y={80} stroke="rgba(91,164,230,0.2)" strokeDasharray="3 3" />
                 <Tooltip

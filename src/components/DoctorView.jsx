@@ -99,22 +99,27 @@ export function DoctorView({ entries, onClose }) {
             const cls = classifyBP(e.systolic, e.diastolic)
             return (
               <div key={e.id} style={{
-                display: 'grid', gridTemplateColumns: '2fr 1.4fr 1fr 1fr',
                 padding: '12px 14px',
                 borderBottom: i < sorted.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
-                alignItems: 'center',
               }}>
-                <div>
-                  <div style={{ fontSize: '0.85rem', color: '#f0eeea' }}>{dayjs(e.date).format('MMM D, YYYY')}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#6b6f73', marginTop: 2 }}>{e.time?.slice(0, 5) || '–'}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.4fr 1fr 1fr', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', color: '#f0eeea' }}>{dayjs(e.date).format('MMM D, YYYY')}</div>
+                    <div style={{ fontSize: '0.72rem', color: '#6b6f73', marginTop: 2 }}>{e.time?.slice(0, 5) || '–'}</div>
+                  </div>
+                  <div className="mono" style={{ fontSize: '1rem', lineHeight: 1 }}>
+                    <span style={{ color: '#e87a8a' }}>{e.systolic}</span>
+                    <span style={{ color: '#4a4e52' }}>/</span>
+                    <span style={{ color: '#5ba4e6' }}>{e.diastolic}</span>
+                  </div>
+                  <div className="mono" style={{ fontSize: '0.9rem', color: '#9ca0a4' }}>{e.pulse || '–'}</div>
+                  <div style={{ fontSize: '0.72rem', color: cls.color, fontWeight: 600 }}>{cls.label}</div>
                 </div>
-                <div className="mono" style={{ fontSize: '1rem', lineHeight: 1 }}>
-                  <span style={{ color: '#e87a8a' }}>{e.systolic}</span>
-                  <span style={{ color: '#4a4e52' }}>/</span>
-                  <span style={{ color: '#5ba4e6' }}>{e.diastolic}</span>
-                </div>
-                <div className="mono" style={{ fontSize: '0.9rem', color: '#9ca0a4' }}>{e.pulse || '–'}</div>
-                <div style={{ fontSize: '0.72rem', color: cls.color, fontWeight: 600 }}>{cls.label}</div>
+                {e.notes && (
+                  <div style={{ fontSize: '0.75rem', color: '#9ca0a4', marginTop: 6, fontStyle: 'italic' }}>
+                    {e.notes}
+                  </div>
+                )}
               </div>
             )
           })}
