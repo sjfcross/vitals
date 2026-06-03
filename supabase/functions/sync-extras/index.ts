@@ -38,7 +38,7 @@ async function fetchDailyRollup(accessToken: string, dataType: string, startDate
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      // window_size_days: 1 is required by the API as of June 2026
+      // window_size_days: 1 required by the API as of June 2026
       body: JSON.stringify({
         range: {
           start: civilDateTime(startDate, 0, 0, 0),
@@ -50,6 +50,12 @@ async function fetchDailyRollup(accessToken: string, dataType: string, startDate
   )
   const data = await resp.json()
   return { ok: resp.ok, status: resp.status, data }
+}
+
+function parseDateFromDp(dp: any): string | null {
+  const d = dp.civilStartTime?.date
+  if (!d) return null
+  return `${d.year}-${String(d.month).padStart(2,'0')}-${String(d.day).padStart(2,'0')}`
 }
 
 Deno.serve(async (req) => {
@@ -69,14 +75,21 @@ Deno.serve(async (req) => {
 
     const accessToken = await getAccessToken()
 
-    // Fetch all 3 in parallel — each failure is caught independently
+    // active-minutes is capped at 14 days by the API
+    const amStartDate = (() => {
+      const d = new Date(endDate)
+      d.setDate(d.getDate() - 13)
+      const s = new Date(startDate)
+      return (d > s ? d : s).toISOString().split('T')[0]
+    })()
+
+    // Type names are kebab-case in the URL path (per Google Health API docs)
     const [distResult, amResult, hrResult] = await Promise.all([
-      fetchDailyRollup(accessToken, 'distance.delta', startDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
-      fetchDailyRollup(accessToken, 'active_minutes', startDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
-      fetchDailyRollup(accessToken, 'heart_rate.bpm', startDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
+      fetchDailyRollup(accessToken, 'distance', startDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
+      fetchDailyRollup(accessToken, 'active-minutes', amStartDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
+      fetchDailyRollup(accessToken, 'heart-rate', startDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
     ])
 
-    // Merge results per date
     const byDate: Record<string, { date: string; km?: number; active_minutes?: number; resting_hr_bpm?: number }> = {}
 
     function ensureDate(d: string) {
@@ -86,37 +99,34 @@ Deno.serve(async (req) => {
 
     if (distResult.ok) {
       for (const dp of distResult.data.rollupDataPoints ?? []) {
-        const d = dp.civilStartTime?.date
-        if (!d) continue
-        const date = `${d.year}-${String(d.month).padStart(2,'0')}-${String(d.day).padStart(2,'0')}`
-        // API returns meters; round to 2 dp
-        const meters = dp.distance?.meters ?? dp.distance?.sum ?? dp.distance?.value
-        if (meters != null) ensureDate(date).km = Math.round(parseFloat(meters) / 10) / 100
+        const date = parseDateFromDp(dp)
+        if (!date) continue
+        // API returns millimeters in distance.millimetersSum
+        const mm = dp.distance?.millimetersSum ?? dp.distance?.meters ?? dp.distance?.value
+        if (mm != null) ensureDate(date).km = Math.round(parseFloat(mm) / 10000) / 100
       }
     }
 
     if (amResult.ok) {
       for (const dp of amResult.data.rollupDataPoints ?? []) {
-        const d = dp.civilStartTime?.date
-        if (!d) continue
-        const date = `${d.year}-${String(d.month).padStart(2,'0')}-${String(d.day).padStart(2,'0')}`
-        // May come back as durationMs or minutes directly
-        const raw = dp.active_minutes?.durationMs ?? dp.active_minutes?.value ?? dp.active_minutes?.minutes
-        if (raw != null) {
-          const val = parseFloat(raw)
-          // If > 1000 it's probably milliseconds; convert to minutes
-          ensureDate(date).active_minutes = val > 1000 ? Math.round(val / 60000) : Math.round(val)
+        const date = parseDateFromDp(dp)
+        if (!date) continue
+        // Sum across all activity levels (LIGHT, MODERATE, VIGOROUS)
+        const levels: any[] = dp.activeMinutes?.activeMinutesRollupByActivityLevel ?? []
+        if (levels.length > 0) {
+          const total = levels.reduce((sum: number, l: any) => sum + (parseInt(l.activeMinutesSum) || 0), 0)
+          if (total > 0) ensureDate(date).active_minutes = total
         }
       }
     }
 
     if (hrResult.ok) {
       for (const dp of hrResult.data.rollupDataPoints ?? []) {
-        const d = dp.civilStartTime?.date
-        if (!d) continue
-        const date = `${d.year}-${String(d.month).padStart(2,'0')}-${String(d.day).padStart(2,'0')}`
-        // Resting HR from daily rollup — field name TBD; try common variants
-        const bpm = dp.heart_rate?.bpm ?? dp.heart_rate?.restingHeartRate ?? dp.heart_rate?.average ?? dp.heart_rate?.value
+        const date = parseDateFromDp(dp)
+        if (!date) continue
+        // heart-rate daily rollup — keep raw for first-run debugging
+        const hr = dp.heartRate ?? dp.heart_rate
+        const bpm = hr?.beatsPerMinuteAvg ?? hr?.beatsPerMinuteMin ?? hr?.bpm ?? hr?.average ?? hr?.value
         if (bpm != null) ensureDate(date).resting_hr_bpm = Math.round(parseFloat(bpm))
       }
     }
