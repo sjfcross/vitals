@@ -3,7 +3,8 @@ import dayjs from 'dayjs'
 const TABS = [
   { id: 'overview', label: 'Overview', icon: '◎' },
   { id: 'nutrition', label: 'Nutrition', icon: '⬡' },
-  { id: 'activity', label: 'Activity', icon: '◈' },
+  { id: 'activity', label: 'Move', icon: '◈' },
+  { id: 'sleep', label: 'Sleep', icon: '◑' },
   { id: 'weight', label: 'Weight', icon: '◷' },
   { id: 'bp', label: 'BP', icon: '♡' },
 ]

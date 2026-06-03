@@ -9,11 +9,13 @@ import { Nutrition } from './tabs/Nutrition'
 import { Activity } from './tabs/Activity'
 import { Weight } from './tabs/Weight'
 import { BloodPressure } from './tabs/BloodPressure'
+import { Sleep } from './tabs/Sleep'
 import { useProfile } from './hooks/useProfile'
 import { useMeals } from './hooks/useMeals'
 import { useActivity } from './hooks/useActivity'
 import { useWeight } from './hooks/useWeight'
 import { useBloodPressure } from './hooks/useBloodPressure'
+import { useSleep } from './hooks/useSleep'
 
 class ErrorBoundary extends Component {
   state = { error: null }
@@ -53,6 +55,7 @@ function AppInner() {
   const { profile, loading: profileLoading, save: saveProfile } = useProfile()
   const { meals, addMeal, deleteMeal } = useMeals(date)
   const { activity, save: saveActivity, reload: reloadActivity } = useActivity(date)
+  const { sleep, reload: reloadSleep } = useSleep(date)
 
   async function syncSteps() {
     const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-steps`
@@ -60,6 +63,15 @@ function AppInner() {
     const data = await res.json()
     if (!res.ok) throw new Error(data.error ?? 'Sync failed')
     await reloadActivity()
+    return data
+  }
+
+  async function syncSleep() {
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-sleep`
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error ?? 'Sync failed')
+    await reloadSleep()
     return data
   }
   const { entries, latest, delta7, delta30, addEntry } = useWeight()
@@ -88,6 +100,7 @@ function AppInner() {
         )}
         {tab === 'nutrition' && <Nutrition meals={meals} profile={profile} onDeleteMeal={deleteMeal} />}
         {tab === 'activity' && <Activity activity={activity} profile={profile} date={date} today={today} onSave={saveActivity} onDateChange={setDate} onSync={syncSteps} />}
+        {tab === 'sleep' && <Sleep sleep={sleep} date={date} today={today} onDateChange={setDate} onSync={syncSleep} />}
         {tab === 'weight' && (
           <Weight
             entries={entries} latest={latest} delta7={delta7} delta30={delta30}
