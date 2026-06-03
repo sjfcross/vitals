@@ -29,27 +29,49 @@ function SleepTimeline({ sleep }) {
   const startMs = new Date(sleep.sleep_start).getTime()
   const endMs   = new Date(sleep.sleep_end).getTime()
   const totalMs = endMs - startMs
-  const CHART_H = 100
-  const ROW_H   = CHART_H / 4
-  const stageY  = { AWAKE: 0, REM: ROW_H, LIGHT: ROW_H * 2, DEEP: ROW_H * 3 }
+
+  // SVG coordinate space
+  const W       = 400
+  const H       = 120
+  const LABEL_W = 34   // left margin for Y labels
+  const CHART_W = W - LABEL_W
+  const ROW_H   = H / 4
+  const ROW_PAD = 3
+  // Center Y of each row (for connectors)
+  const stageIdx = { AWAKE: 0, REM: 1, LIGHT: 2, DEEP: 3 }
+  const rowCY = (type) => stageIdx[type] * ROW_H + ROW_H / 2
+
+  // x position in chart space (offset by LABEL_W)
+  const xPos = (ms) => LABEL_W + ((ms - startMs) / totalMs) * CHART_W
 
   // X-axis hour labels
-  const startHour = new Date(sleep.sleep_start)
-  startHour.setMinutes(0, 0, 0)
-  startHour.setHours(startHour.getHours() + 1)
-  const labels = []
-  let t = startHour.getTime()
+  const firstHour = new Date(sleep.sleep_start)
+  firstHour.setMinutes(0, 0, 0)
+  firstHour.setHours(firstHour.getHours() + 1)
+  const xLabels = []
+  let t = firstHour.getTime()
   while (t < endMs) {
-    const pct = ((t - startMs) / totalMs) * 100
     const d = new Date(t)
-    labels.push({ pct, label: `${d.getHours()}:00` })
+    xLabels.push({ x: xPos(t), label: `${d.getHours()}:00` })
     t += 3600000
   }
 
+  // Connector lines between consecutive stages
+  const connectors = []
+  for (let i = 0; i < sleep.stages.length - 1; i++) {
+    const cur  = sleep.stages[i]
+    const next = sleep.stages[i + 1]
+    if (cur.type === next.type) continue
+    const cx  = xPos(new Date(cur.endTime).getTime())
+    const cy1 = rowCY(cur.type)
+    const cy2 = rowCY(next.type)
+    connectors.push({ x: cx, y1: cy1, y2: cy2 })
+  }
+
   return (
-    <div style={{ padding: '0 4px' }}>
-      {/* Stage row labels */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+    <div>
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         {STAGE_ORDER.map(s => (
           <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <div style={{ width: 8, height: 8, borderRadius: 2, background: STAGE_COLOR[s] }} />
@@ -58,44 +80,48 @@ function SleepTimeline({ sleep }) {
         ))}
       </div>
 
-      {/* Timeline SVG */}
-      <div style={{ position: 'relative' }}>
-        <svg width="100%" viewBox={`0 0 400 ${CHART_H}`} preserveAspectRatio="none" style={{ display: 'block', borderRadius: 6, overflow: 'hidden' }}>
-          {/* Background rows */}
-          {STAGE_ORDER.map((s, i) => (
-            <rect key={s} x={0} y={i * ROW_H} width={400} height={ROW_H} fill={i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)'} />
-          ))}
-
-          {/* Stage segments */}
-          {sleep.stages.map((seg, i) => {
-            const x = ((new Date(seg.startTime).getTime() - startMs) / totalMs) * 400
-            const w = ((new Date(seg.endTime).getTime() - new Date(seg.startTime).getTime()) / totalMs) * 400
-            const y = stageY[seg.type] ?? 0
-            return (
-              <rect key={i} x={x} y={y + 2} width={Math.max(w, 1)} height={ROW_H - 4}
-                fill={STAGE_COLOR[seg.type] ?? '#666'} rx={2} opacity={0.9} />
-            )
-          })}
-        </svg>
+      {/* Timeline SVG — Y labels baked in, no outside div */}
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
+        {/* Background row stripes */}
+        {STAGE_ORDER.map((s, i) => (
+          <rect key={s} x={LABEL_W} y={i * ROW_H} width={CHART_W} height={ROW_H}
+            fill={i % 2 === 0 ? 'rgba(255,255,255,0.025)' : 'rgba(255,255,255,0.045)'} />
+        ))}
 
         {/* Y axis labels */}
-        <div style={{ position: 'absolute', right: -32, top: 0, height: CHART_H, display: 'flex', flexDirection: 'column' }}>
-          {STAGE_ORDER.map(s => (
-            <div key={s} style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.52rem', color: '#52575c', whiteSpace: 'nowrap' }}>{STAGE_LABEL[s]}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* X axis labels */}
-      <div style={{ position: 'relative', height: 18, marginTop: 4 }}>
-        {labels.map(({ pct, label }) => (
-          <span key={label} style={{ position: 'absolute', left: `${pct}%`, transform: 'translateX(-50%)', fontSize: '0.58rem', color: '#52575c' }}>
-            {label}
-          </span>
+        {STAGE_ORDER.map((s, i) => (
+          <text key={s} x={LABEL_W - 4} y={i * ROW_H + ROW_H / 2 + 1}
+            textAnchor="end" dominantBaseline="middle"
+            fontSize="7" fill="#52575c" fontFamily="inherit">
+            {STAGE_LABEL[s]}
+          </text>
         ))}
-      </div>
+
+        {/* Connector lines between stage transitions */}
+        {connectors.map((c, i) => (
+          <line key={i} x1={c.x} y1={c.y1} x2={c.x} y2={c.y2}
+            stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
+        ))}
+
+        {/* Stage blocks */}
+        {sleep.stages.map((seg, i) => {
+          const x = xPos(new Date(seg.startTime).getTime())
+          const w = (new Date(seg.endTime).getTime() - new Date(seg.startTime).getTime()) / totalMs * CHART_W
+          const y = stageIdx[seg.type] * ROW_H
+          return (
+            <rect key={i} x={x} y={y + ROW_PAD} width={Math.max(w, 1)} height={ROW_H - ROW_PAD * 2}
+              fill={STAGE_COLOR[seg.type] ?? '#666'} rx={2} opacity={0.9} />
+          )
+        })}
+
+        {/* X axis labels */}
+        {xLabels.map(({ x, label }) => (
+          <text key={label} x={x} y={H + 10} textAnchor="middle"
+            fontSize="7" fill="#52575c" fontFamily="inherit">
+            {label}
+          </text>
+        ))}
+      </svg>
     </div>
   )
 }
@@ -125,12 +151,13 @@ export function Sleep({ sleep, date, today, onDateChange, onSync }) {
     }
   }
 
-  const asleepMin  = sleep?.asleep_min  ?? 0
-  const deepMin    = sleep?.deep_min    ?? 0
-  const remMin     = sleep?.rem_min     ?? 0
-  const lightMin   = sleep?.light_min   ?? 0
-  const awakeMin   = sleep?.awake_min   ?? 0
-  const totalMin   = sleep?.duration_min ?? 0
+  const asleepMin = sleep?.asleep_min ?? 0
+  const deepMin   = sleep?.deep_min   ?? 0
+  const remMin    = sleep?.rem_min    ?? 0
+  const lightMin  = sleep?.light_min  ?? 0
+  const awakeMin  = sleep?.awake_min  ?? 0
+
+  const BAR_MAX_H = 72  // px, represents 10h
 
   return (
     <div style={{ padding: '16px 16px 100px' }}>
@@ -166,7 +193,8 @@ export function Sleep({ sleep, date, today, onDateChange, onSync }) {
       {sleep ? (<>
         {/* Summary card */}
         <div className="card-lg fade-up stagger-1" style={{ padding: '20px', marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+          {/* Header: total + stage totals */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
             <div>
               <div className="mono" style={{ fontSize: '2rem', fontWeight: 500, color: '#f0eeea', lineHeight: 1 }}>
                 {fmt(asleepMin)}
@@ -175,7 +203,7 @@ export function Sleep({ sleep, date, today, onDateChange, onSync }) {
                 {dayjs(sleep.sleep_start).format('h:mm A')} – {dayjs(sleep.sleep_end).format('h:mm A')}
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', textAlign: 'right' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', textAlign: 'right' }}>
               {[['Deep', deepMin, '#3a5fa8'], ['REM', remMin, '#5ba4e6'], ['Light', lightMin, '#b47fdb'], ['Awake', awakeMin, '#e8784a']].map(([label, min, color]) => (
                 <div key={label}>
                   <div className="mono" style={{ fontSize: '0.85rem', color, fontWeight: 500 }}>{fmt(min)}</div>
@@ -185,29 +213,41 @@ export function Sleep({ sleep, date, today, onDateChange, onSync }) {
             </div>
           </div>
 
-          {/* Stage proportion bar */}
-          {totalMin > 0 && (
-            <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', marginBottom: 16, gap: 1 }}>
-              {[['DEEP', deepMin, '#3a5fa8'], ['REM', remMin, '#5ba4e6'], ['LIGHT', lightMin, '#b47fdb'], ['AWAKE', awakeMin, '#e8784a']].map(([stage, min, color]) =>
-                min > 0 ? <div key={stage} style={{ flex: min, background: color }} /> : null
-              )}
-            </div>
-          )}
-
           <SleepTimeline sleep={sleep} />
         </div>
 
         {/* Weekly bar */}
         <div className="card fade-up stagger-2" style={{ padding: '14px 16px', marginBottom: 12 }}>
           <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em', marginBottom: 12 }}>WEEK — SLEEP</div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 60 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: BAR_MAX_H + 20 }}>
             {weekData.map((d, i) => {
-              const h = d.asleep_min ? (d.asleep_min / 600) * 60 : 0
+              const min = d.asleep_min || 0
+              const barH = min ? Math.max((min / 600) * BAR_MAX_H, 16) : 0
               const active = d.date === date
+              const label = fmt(min)
               return (
                 <div key={i} onClick={() => handleDateChange(d.date)}
-                  style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                  <div style={{ width: '100%', height: `${h}px`, background: active ? '#5ba4e6' : 'rgba(255,255,255,0.1)', borderRadius: '3px 3px 0 0', transition: 'background 0.18s' }} />
+                  style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: 'pointer', height: '100%', justifyContent: 'flex-end' }}>
+                  <div style={{
+                    width: '100%', height: `${barH}px`,
+                    background: active ? '#5ba4e6' : 'rgba(255,255,255,0.1)',
+                    borderRadius: '4px 4px 0 0',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'background 0.18s',
+                    position: 'relative', overflow: 'hidden',
+                  }}>
+                    {min > 0 && barH >= 18 && (
+                      <span style={{
+                        fontSize: '0.52rem', fontWeight: 600, lineHeight: 1,
+                        color: active ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.5)',
+                        whiteSpace: 'nowrap',
+                        writingMode: barH < 32 ? 'vertical-rl' : 'horizontal-tb',
+                        transform: barH < 32 ? 'rotate(180deg)' : 'none',
+                      }}>
+                        {label}
+                      </span>
+                    )}
+                  </div>
                   <span style={{ fontSize: '0.62rem', color: active ? '#5ba4e6' : '#6b6f73' }}>{d.label}</span>
                 </div>
               )
