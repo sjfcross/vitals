@@ -1,6 +1,6 @@
 # VITALS
 
-Personal health tracker PWA. Tracks nutrition, activity, weight, and blood pressure. Mobile-first dark UI, lives at `/vitals/` on GitHub Pages.
+Personal health tracker PWA. Tracks nutrition, activity, sleep, weight, and blood pressure. Mobile-first dark UI, lives at `/vitals/` on GitHub Pages.
 
 ---
 
@@ -33,13 +33,15 @@ src/
     useProfile.js       — user_profile row (height, calorie/sodium/protein/steps targets)
     useMeals.js         — meals table for a given date; useWeekMeals for weekly bar chart
     useActivity.js      — activity table for a given date; useWeekActivity for weekly bar chart
+    useSleep.js         — sleep table for a given date; useWeekSleep for weekly bar chart
     useWeight.js        — full weight history, 7-day and 30-day deltas
     useBloodPressure.js — full BP history
 
   tabs/
     Overview.jsx        — daily rings (cal/sodium/protein), steps, weekly calorie bar, meal list
     Nutrition.jsx       — macro donut, full nutrient table, per-meal breakdown
-    Activity.jsx        — steps ring, weekly steps bar, activity log form
+    Activity.jsx        — (tab label: "Move") steps ring, weekly steps bar, activity log form
+    Sleep.jsx           — sleep duration + stage timeline chart, weekly sleep bars, Fitbit sync
     Weight.jsx          — current weight, BMI, 7/30-day delta cards, trend chart, log form
     BloodPressure.jsx   — latest reading, trend chart, log form, doctor view
 
@@ -63,6 +65,7 @@ All tables have Row Level Security — users can only see their own rows.
 | `user_profile` | `height_cm`, `target_calories`, `target_sodium_mg`, `target_protein_g`, `target_steps` |
 | `meals` | `date`, `time`, `name`, `description`, `emoji`, `source`, `calories`, `protein_g`, `fat_g`, `fat_saturated_g`, `carbs_g`, `sugar_g`, `sugar_added_g`, `fiber_g`, `sodium_mg` |
 | `activity` | `date`, `steps`, `km`, `active_minutes`, `workout_type`, `workout_duration_min` |
+| `sleep` | `date` (wake-up date), `sleep_start`, `sleep_end`, `duration_min`, `asleep_min`, `deep_min`, `rem_min`, `light_min`, `awake_min`, `stages` (JSONB) |
 | `weight` | `date`, `time`, `weight_kg` |
 | `blood_pressure` | `date`, `time`, `systolic`, `diastolic`, `pulse`, `notes` |
 
@@ -248,6 +251,116 @@ supabase functions deploy sync-steps --project-ref rkxorbsusqfhlhrlajlj
 
 ---
 
+## Google Health API integration — sleep
+
+Sleep data is synced via a separate edge function (`sync-sleep`) into the `sleep` table.
+
+### Sleep API endpoint
+
+Unlike steps (which uses `dailyRollUp`), sleep uses a plain **GET list** with no date params:
+```
+GET https://health.googleapis.com/v4/users/me/dataTypes/sleep/dataPoints
+Authorization: Bearer <access_token>
+```
+
+Returns all sleep data points available. Filter by date range in the function after fetching. Same OAuth secrets as `sync-steps` — no extra scopes needed beyond what's already in the refresh token (`googlehealth.sleep.readonly` is already included).
+
+Key discovery: `sleep` does **not** support `dailyRollUp`. Attempting it returns a 400 with:
+```
+"DailyRollup is not supported for data type sleep — allowed: list, get, reconcile, create, update, batchDelete"
+```
+
+### Sleep response shape
+
+```json
+{
+  "dataPoints": [{
+    "sleep": {
+      "interval": {
+        "startTime": "2026-06-02T23:08:00Z",
+        "startUtcOffset": "3600s",
+        "endTime": "2026-06-03T06:36:00Z",
+        "endUtcOffset": "3600s"
+      },
+      "type": "STAGES",
+      "stages": [
+        { "startTime": "2026-06-02T23:08:00Z", "endTime": "2026-06-02T23:14:30Z", "type": "AWAKE" },
+        { "startTime": "2026-06-02T23:14:30Z", "endTime": "2026-06-02T23:30:30Z", "type": "LIGHT" },
+        ...
+      ],
+      "summary": {
+        "minutesInSleepPeriod": "448",
+        "minutesAsleep": "429",
+        "minutesAwake": "19",
+        "stagesSummary": [
+          { "type": "AWAKE", "minutes": "18", "count": "3" },
+          { "type": "LIGHT", "minutes": "282", "count": "15" },
+          { "type": "DEEP",  "minutes": "46",  "count": "8" },
+          { "type": "REM",   "minutes": "101", "count": "6" }
+        ]
+      }
+    }
+  }]
+}
+```
+
+Key gotchas:
+- All `minutes` values in `summary` are **strings** — must `parseInt()`
+- `startUtcOffset` is a string like `"3600s"` — strip the `s` and parse as seconds to compute local time
+- Sleep sessions span two calendar days; we use the **wake-up date** (local time) as the record's `date`
+- Stage types: `AWAKE`, `LIGHT`, `DEEP`, `REM` (all caps)
+
+### Date assignment
+
+```js
+const endLocal  = new Date(interval.endTime)              // UTC wake-up time
+const offsetSec = parseInt(interval.endUtcOffset)         // e.g. 3600 from "3600s"
+const wakeLocal = new Date(endLocal.getTime() + offsetSec * 1000)
+const date      = wakeLocal.toISOString().split('T')[0]   // "YYYY-MM-DD" local wake-up date
+```
+
+### Supabase table: `sleep`
+
+```sql
+create table public.sleep (
+  id           uuid primary key default gen_random_uuid(),
+  created_at   timestamptz default now(),
+  date         date not null unique,   -- wake-up date (local)
+  sleep_start  timestamptz not null,
+  sleep_end    timestamptz not null,
+  duration_min int,                    -- total time in bed
+  asleep_min   int,                    -- actual sleep (excl. awake in bed)
+  deep_min     int,
+  rem_min      int,
+  light_min    int,
+  awake_min    int,
+  stages       jsonb                   -- [{startTime, endTime, type}]
+);
+```
+
+RLS policy: `auth.uid() is not null` (any authenticated user). Both `authenticated` and `service_role` need SELECT/INSERT/UPDATE grants — run:
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sleep TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.sleep TO service_role;
+```
+
+### Edge function: `sync-sleep`
+
+Source: `supabase/functions/sync-sleep/index.ts`. Deploy:
+```bash
+supabase functions deploy sync-sleep --project-ref rkxorbsusqfhlhrlajlj --no-verify-jwt
+```
+
+Default: syncs last 30 days. Accepts optional `{ startDate, endDate }` body. Returns `{ synced, rows, upsertError }`.
+
+### Sleep tab UI (Sleep.jsx)
+
+- **Stage timeline**: custom SVG — Y axis labels baked in as `<text>` elements, stage blocks as `<rect>`, thin vertical connector lines between stage transitions (Samsung Health style)
+- **Weekly bar**: bars scale to 10h max; duration text rendered inside each bar
+- **Stage colours**: Deep `#3a5fa8`, REM `#5ba4e6`, Light `#b47fdb`, Awake `#e8784a`
+
+---
+
 ## Color palette
 
 | Metric | Color |
@@ -264,3 +377,8 @@ supabase functions deploy sync-steps --project-ref rkxorbsusqfhlhrlajlj
 | Normal/good | `#6ec87a` |
 | Warning | `#f0c96a` |
 | Danger | `#e8784a` / `#ff5a5a` |
+| Sleep (accent) | `#5ba4e6` |
+| Sleep — Deep | `#3a5fa8` |
+| Sleep — REM | `#5ba4e6` |
+| Sleep — Light | `#b47fdb` |
+| Sleep — Awake | `#e8784a` |
