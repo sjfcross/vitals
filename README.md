@@ -64,7 +64,7 @@ All tables have Row Level Security — users can only see their own rows.
 |---|---|
 | `user_profile` | `height_cm`, `target_calories`, `target_sodium_mg`, `target_protein_g`, `target_steps` |
 | `meals` | `date`, `time`, `name`, `description`, `emoji`, `source`, `calories`, `protein_g`, `fat_g`, `fat_saturated_g`, `carbs_g`, `sugar_g`, `sugar_added_g`, `fiber_g`, `sodium_mg` |
-| `activity` | `date`, `steps`, `km`, `active_minutes`, `workout_type`, `workout_duration_min` |
+| `activity` | `date`, `steps`, `km`, `active_minutes`, `workout_type`, `workout_duration_min`, `resting_hr_bpm` |
 | `sleep` | `date` (wake-up date), `sleep_start`, `sleep_end`, `duration_min`, `asleep_min`, `deep_min`, `rem_min`, `light_min`, `awake_min`, `stages` (JSONB) |
 | `weight` | `date`, `time`, `weight_kg` |
 | `blood_pressure` | `date`, `time`, `systolic`, `diastolic`, `pulse`, `notes` |
@@ -123,6 +123,16 @@ npm run build
 ```
 
 Base path is `/vitals/` (set in `vite.config.js`). PWA manifest points `start_url` to `/vitals/`.
+
+---
+
+## Google Health API — gotchas summary
+
+Two things that will waste hours if you don't know them upfront:
+
+1. **Type names are kebab-case in the URL path.** `active-minutes`, `heart-rate`, `resting-heart-rate` — not underscores. `steps` and `distance` happen to have no separator so they look the same either way, which hides this rule until you try a multi-word type. Wrong format gives `INVALID_PARENT_DATA_TYPE_COLLECTION` with no hint about casing.
+
+2. **`active-minutes` has a hard 14-day window limit.** The API returns `INVALID_ROLLUP_QUERY_DURATION` if `window_size_days × number_of_days > 14`. The default 30-day range trips this every time. Cap `active-minutes` requests to a 14-day window.
 
 ---
 
@@ -250,6 +260,37 @@ The source lives at `supabase/functions/sync-steps/index.ts` (deploy via Supabas
 ```bash
 supabase functions deploy sync-steps --project-ref rkxorbsusqfhlhrlajlj
 ```
+
+---
+
+## Google Health API integration — distance & active minutes (sync-extras)
+
+A second edge function (`sync-extras`) fetches distance and active minutes in parallel and upserts them into the `activity` table without touching `steps`.
+
+### Data types
+
+| Column | API data type | Response field | Notes |
+|---|---|---|---|
+| `km` | `distance` | `distance.millimetersSum` | Divide by 1,000,000 for km |
+| `active_minutes` | `active-minutes` | `activeMinutes.activeMinutesRollupByActivityLevel[*].activeMinutesSum` | Sum across all levels (LIGHT + VIGOROUS etc.) |
+| `resting_hr_bpm` | `heart-rate` | — | Requires `fitness.heart_rate.read` scope — **not in current refresh token**. Column exists, won't auto-populate until token is re-issued with that scope. |
+
+### active-minutes 14-day cap
+
+The API rejects requests where `window_size_days × days_in_range > 14`. `sync-extras` automatically clamps `startDate` so it's never more than 13 days before `endDate` for the `active-minutes` fetch. Distance has no such limit.
+
+### OAuth scope needed for heart rate
+
+Re-generate the refresh token via [Google OAuth Playground](https://developers.google.com/oauthplayground) adding `https://www.googleapis.com/auth/fitness.heart_rate.read` alongside the existing activity scope. Update the `GOOGLE_REFRESH_TOKEN` secret on both `sync-steps` and `sync-extras`.
+
+### Edge function: `sync-extras`
+
+Source: `supabase/functions/sync-extras/index.ts`. Deployed with `verify_jwt: false`.
+```bash
+supabase functions deploy sync-extras --project-ref rkxorbsusqfhlhrlajlj --no-verify-jwt
+```
+
+Default: distance syncs last 30 days, active-minutes last 14 days. Returns `{ synced, rows, rawDistance, rawActiveMinutes, rawHeartRate, upsertError }`.
 
 ---
 
