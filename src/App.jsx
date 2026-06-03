@@ -62,8 +62,21 @@ function AppInner() {
     const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error ?? 'Sync failed')
-    await reloadActivity()
     return data
+  }
+
+  async function syncExtras() {
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-extras`
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error ?? 'Sync extras failed')
+    return data
+  }
+
+  async function syncAll() {
+    const [stepsData, extrasData] = await Promise.all([syncSteps(), syncExtras()])
+    await reloadActivity()
+    return { synced: stepsData.synced + extrasData.synced }
   }
 
   async function syncSleep() {
@@ -99,7 +112,7 @@ function AppInner() {
           />
         )}
         {tab === 'nutrition' && <Nutrition meals={meals} profile={profile} onDeleteMeal={deleteMeal} />}
-        {tab === 'activity' && <Activity activity={activity} profile={profile} date={date} today={today} onSave={saveActivity} onDateChange={setDate} onSync={syncSteps} />}
+        {tab === 'activity' && <Activity activity={activity} profile={profile} date={date} today={today} onSave={saveActivity} onDateChange={setDate} onSync={syncAll} />}
         {tab === 'sleep' && <Sleep sleep={sleep} date={date} today={today} onDateChange={setDate} onSync={syncSleep} />}
         {tab === 'weight' && (
           <Weight

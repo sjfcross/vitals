@@ -142,13 +142,22 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
             <span style={{ fontSize: '0.6rem', color: '#6b6f73', marginTop: 2 }}>steps</span>
           </div>
         </div>
-        <div>
-          <div className="mono" style={{ fontSize: '1rem', color: '#b47fdb' }}>
-            {activity?.km ? `${activity.km} km` : `${(steps * 0.00075).toFixed(2)} km`}
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+            <div className="mono" style={{ fontSize: '1rem', color: '#b47fdb' }}>
+              {activity?.km ? `${activity.km} km` : `${(steps * 0.00075).toFixed(2)} km`}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: '#9ca0a4' }}>
+              {activity?.active_minutes ? `${activity.active_minutes} active min` : '—'}
+            </div>
           </div>
-          <div style={{ fontSize: '0.8rem', color: '#9ca0a4', marginTop: 4 }}>
-            {activity?.active_minutes ? `${activity.active_minutes} active min` : '—'}
-          </div>
+          {activity?.resting_hr_bpm != null && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 6 }}>
+              <span style={{ fontSize: '0.72rem', color: '#e87a8a' }}>♥</span>
+              <span className="mono" style={{ fontSize: '0.85rem', color: '#e87a8a' }}>{activity.resting_hr_bpm}</span>
+              <span style={{ fontSize: '0.68rem', color: '#6b6f73' }}>bpm resting</span>
+            </div>
+          )}
           {activity?.workout_type && (
             <div style={{ marginTop: 8, fontSize: '0.75rem', color: '#9ca0a4', background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: '4px 8px', display: 'inline-block' }}>
               {activity.workout_type} {activity.workout_duration_min ? `· ${activity.workout_duration_min}min` : ''}
