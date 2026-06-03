@@ -172,7 +172,7 @@ Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
 
-Request body uses **civil date-time objects** (not Unix timestamps — this was the key discovery):
+Request body uses **civil date-time objects** plus `window_size_days: 1` for daily bucketing (both are required — API updated June 2026):
 ```json
 {
   "range": {
@@ -184,7 +184,8 @@ Request body uses **civil date-time objects** (not Unix timestamps — this was 
       "date": { "year": 2026, "month": 6, "day": 3 },
       "time": { "hours": 23, "minutes": 59, "seconds": 59 }
     }
-  }
+  },
+  "window_size_days": 1
 }
 ```
 
@@ -208,6 +209,7 @@ Key gotchas:
 - Date comes from `civilStartTime.date`, not an ISO string
 - Days with zero steps are omitted from the response entirely
 - The API is `health.googleapis.com` (Health Connect), not the older Fitness REST API (`www.googleapis.com/fitness`)
+- **June 2026 breaking change:** `window_size_days: 1` is now required alongside `range`. Previously the request only needed `range`; after a Google Health Connect update the endpoint returns 400 `INVALID_ARGUMENT` without this field. Value `1` = daily buckets (matches the old per-day behaviour).
 
 ### Edge function: `sync-steps`
 
