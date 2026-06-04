@@ -352,6 +352,7 @@ Key gotchas:
 - `startUtcOffset` is a string like `"3600s"` — strip the `s` and parse as seconds to compute local time
 - Sleep sessions span two calendar days; we use the **wake-up date** (local time) as the record's `date`
 - Stage types: `AWAKE`, `LIGHT`, `DEEP`, `REM` (all caps)
+- **Fitbit duplicate sessions:** Fitbit sometimes records two overlapping sleep sessions for the same night (e.g. one "main" session and one short fragment). Both map to the same wake-up date. If both are sent in a single `upsert()` call, Postgres throws `ON CONFLICT DO UPDATE command cannot affect row a second time` (code `21000`) and the **entire batch fails silently** — `upsertError` is not null but the rows array still looks populated, so you won't notice unless you check the DB. Fix: deduplicate rows by date before upserting, keeping the session with the highest `asleep_min`. Do **not** use a POST body to pass a date range to the sleep endpoint — POST is treated as `CreateDataPoint` (write operation) and returns 403 `ACCESS_TOKEN_SCOPE_INSUFFICIENT` because the refresh token is read-only.
 
 ### Date assignment
 
@@ -394,7 +395,14 @@ Source: `supabase/functions/sync-sleep/index.ts`. Deploy:
 supabase functions deploy sync-sleep --project-ref rkxorbsusqfhlhrlajlj --no-verify-jwt
 ```
 
-Default: syncs last 30 days. Accepts optional `{ startDate, endDate }` body. Returns `{ synced, rows, upsertError }`.
+Default: syncs last 30 days. Accepts optional `{ startDate, endDate }` body. Returns `{ synced, upsertError }`.
+
+Pipeline:
+1. GET all sleep data points (no date filter — API returns everything)
+2. Map each data point to a row, assigning `date` from the local wake-up time
+3. **Deduplicate by date** (keep longest `asleep_min`) — Fitbit can emit two sessions per night
+4. Filter to the requested date window using `sleep_end`
+5. Upsert with `onConflict: 'date'`
 
 ### Sleep tab UI (Sleep.jsx)
 

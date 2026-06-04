@@ -17,12 +17,17 @@ function parsePaste(text) {
     calories: get([/calories?[:\s]+(\d+)/i]) || '',
     protein_g: get([/protein[:\s]+([\d.]+)/i]) || '',
     fat_g: get([/fat[:\s]+([\d.]+)/i, /total fat[:\s]+([\d.]+)/i]) || '',
-    fat_saturated_g: get([/saturated[:\s]+([\d.]+)/i]) || '',
+    fat_saturated_g: get([/saturated[:\s]+([\d.]+)/i, /sat\.?\s*fat[:\s]+([\d.]+)/i]) || '',
     carbs_g: get([/carbs?[:\s]+([\d.]+)/i, /carbohydrates?[:\s]+([\d.]+)/i]) || '',
-    sugar_g: get([/sugars?[:\s]+([\d.]+)/i]) || '',
+    sugar_g: get([/^sugar[:\s]+([\d.]+)/im]) || '',
     sugar_added_g: get([/added sugar[:\s~]+([\d.]+)/i]) || '',
     fiber_g: get([/fi[b]?re[:\s]+([\d.]+)/i, /fiber[:\s]+([\d.]+)/i]) || '',
     sodium_mg: get([/sodium[:\s]+([\d.]+)/i]) || '',
+    calcium_mg: get([/calcium[:\s]+([\d.]+)/i]) || '',
+    iron_mg: get([/iron[:\s]+([\d.]+)/i]) || '',
+    potassium_mg: get([/potassium[:\s]+([\d.]+)/i]) || '',
+    vitamin_c_mg: get([/vitamin\s*c[:\s]+([\d.]+)/i]) || '',
+    vitamin_d_ug: get([/vitamin\s*d[:\s]+([\d.]+)/i]) || '',
   }
 }
 
@@ -30,6 +35,7 @@ const EMPTY = {
   name: '', description: '', emoji: '🍽️', time: dayjs().format('HH:mm'),
   calories: '', protein_g: '', fat_g: '', fat_saturated_g: '',
   carbs_g: '', sugar_g: '', sugar_added_g: '', fiber_g: '', sodium_mg: '',
+  calcium_mg: '', iron_mg: '', potassium_mg: '', vitamin_c_mg: '', vitamin_d_ug: '',
   source: 'manual',
 }
 
@@ -73,6 +79,11 @@ export function LogMealSheet({ onClose, onSave, date }) {
       sugar_added_g: form.sugar_added_g ? parseFloat(form.sugar_added_g) : null,
       fiber_g: form.fiber_g ? parseFloat(form.fiber_g) : null,
       sodium_mg: form.sodium_mg ? parseInt(form.sodium_mg) : null,
+      calcium_mg: form.calcium_mg ? parseInt(form.calcium_mg) : null,
+      iron_mg: form.iron_mg ? parseFloat(form.iron_mg) : null,
+      potassium_mg: form.potassium_mg ? parseInt(form.potassium_mg) : null,
+      vitamin_c_mg: form.vitamin_c_mg ? parseFloat(form.vitamin_c_mg) : null,
+      vitamin_d_ug: form.vitamin_d_ug ? parseFloat(form.vitamin_d_ug) : null,
     }
     await onSave(meal)
     setSaving(false)
@@ -141,10 +152,10 @@ export function LogMealSheet({ onClose, onSave, date }) {
             </div>
             <textarea
               className="input"
-              rows={8}
+              rows={14}
               value={pasteText}
               onChange={handlePaste}
-              placeholder={`Description: beef burger with fries\nCalories: 620 kcal\nProtein: 38g\nFat: 22g\nCarbs: 68g\nSodium: 780mg\nSugar: 12g\nAdded sugar: ~2g\nFibre: 4g`}
+              placeholder={`Description: beef burger with fries\nCalories: 620 kcal\nProtein: 38g\nFat: 22g\nSat. fat: 8g\nCarbs: 68g\nSugar: 12g\nAdded sugar: ~2g\nFibre: 4g\nSodium: 780mg\nCalcium: 60mg\nIron: 3.2mg\nPotassium: 520mg\nVitamin C: 8mg\nVitamin D: 0.4µg`}
               autoFocus
             />
             <button className="btn-primary" onClick={() => setMode('form')} disabled={!pasteText.trim()}>

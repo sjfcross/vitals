@@ -32,8 +32,6 @@ Deno.serve(async (req) => {
     const startDate = body.startDate ?? (() => {
       const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0]
     })()
-    const startMs = new Date(startDate + 'T00:00:00Z').getTime()
-    const endMs   = new Date(endDate   + 'T23:59:59Z').getTime()
 
     const accessToken = await getAccessToken()
 
@@ -42,15 +40,15 @@ Deno.serve(async (req) => {
       { headers: { 'Authorization': `Bearer ${accessToken}` } }
     )
     const data = await resp.json()
-    if (!resp.ok) throw new Error(`Google Health API ${resp.status}: ${JSON.stringify(data)}`)
+    if (!resp.ok) return new Response(
+      JSON.stringify({ error: `Google Health API ${resp.status}`, rawResponse: data }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
 
     const dataPoints: any[] = data.dataPoints ?? []
 
     const rows = dataPoints
-      .filter((dp: any) => {
-        const start = new Date(dp.sleep?.interval?.startTime).getTime()
-        return !isNaN(start) && start >= startMs && start <= endMs
-      })
+      .filter((dp: any) => dp.sleep?.interval?.startTime)
       .map((dp: any) => {
         const interval = dp.sleep.interval
         const summary  = dp.sleep.summary ?? {}
@@ -85,21 +83,40 @@ Deno.serve(async (req) => {
         }
       })
 
+    // Deduplicate by date — Fitbit sometimes records two sessions for the same night.
+    // Postgres can't ON CONFLICT UPDATE the same row twice in one statement, so keep longest.
+    const byDate = new Map<string, typeof rows[0]>()
+    for (const row of rows) {
+      const existing = byDate.get(row.date)
+      if (!existing || (row.asleep_min ?? 0) > (existing.asleep_min ?? 0)) {
+        byDate.set(row.date, row)
+      }
+    }
+    const deduped = Array.from(byDate.values())
+
+    // Filter to requested date window
+    const startMs = new Date(startDate + 'T00:00:00Z').getTime()
+    const endMs   = new Date(endDate   + 'T23:59:59Z').getTime()
+    const filtered = deduped.filter(r => {
+      const t = new Date(r.sleep_end).getTime()
+      return t >= startMs && t <= endMs
+    })
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
     let upsertError = null
-    if (rows.length > 0) {
+    if (filtered.length > 0) {
       const { error } = await supabase
         .from('sleep')
-        .upsert(rows, { onConflict: 'date' })
+        .upsert(filtered, { onConflict: 'date' })
       upsertError = error
     }
 
     return new Response(
-      JSON.stringify({ synced: rows.length, rows, upsertError }),
+      JSON.stringify({ synced: filtered.length, upsertError }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (err) {
