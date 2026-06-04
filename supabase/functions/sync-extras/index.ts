@@ -67,7 +67,13 @@ function parseDateFromDp(dp: any): string | null {
 }
 
 function civilDateFromSampleTime(dp: any): string | null {
-  const d = dp?.sampleTime?.civilTime?.date
+  // Data is nested under the type key: dp.heartRateVariability.sampleTime or dp.oxygenSaturation.sampleTime
+  const typeKeys = Object.keys(dp || {}).filter(k => k !== 'dataSource')
+  let d = null
+  for (const k of typeKeys) {
+    d = dp[k]?.sampleTime?.civilTime?.date
+    if (d) break
+  }
   if (!d) return null
   return `${d.year}-${String(d.month).padStart(2,'0')}-${String(d.day).padStart(2,'0')}`
 }
@@ -171,7 +177,7 @@ Deno.serve(async (req) => {
         const date = civilDateFromSampleTime(dp)
         if (!date || date < startDate || date > endDate) continue
         const val = dp.oxygenSaturation?.percentage
-        if (val != null) {
+        if (val != null && parseFloat(val) >= 80) {
           if (!spo2ByDate[date]) spo2ByDate[date] = []
           spo2ByDate[date].push(parseFloat(val))
         }
