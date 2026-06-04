@@ -64,7 +64,7 @@ All tables have Row Level Security — users can only see their own rows.
 |---|---|
 | `user_profile` | `height_cm`, `target_calories`, `target_sodium_mg`, `target_protein_g`, `target_steps` |
 | `meals` | `date`, `time`, `name`, `description`, `emoji`, `source`, `calories`, `protein_g`, `fat_g`, `fat_saturated_g`, `carbs_g`, `sugar_g`, `sugar_added_g`, `fiber_g`, `sodium_mg` |
-| `activity` | `date`, `steps`, `km`, `active_minutes`, `workout_type`, `workout_duration_min`, `resting_hr_bpm` |
+| `activity` | `date`, `steps`, `km`, `active_minutes`, `workout_type`, `workout_duration_min`, `resting_hr_bpm`, `hrv_rmssd`, `spo2_pct` |
 | `sleep` | `date` (wake-up date), `sleep_start`, `sleep_end`, `duration_min`, `asleep_min`, `deep_min`, `rem_min`, `light_min`, `awake_min`, `stages` (JSONB) |
 | `weight` | `date`, `time`, `weight_kg` |
 | `blood_pressure` | `date`, `time`, `systolic`, `diastolic`, `pulse`, `notes` |
@@ -263,25 +263,55 @@ supabase functions deploy sync-steps --project-ref rkxorbsusqfhlhrlajlj
 
 ---
 
-## Google Health API integration — distance & active minutes (sync-extras)
+## Google Health API integration — distance, active minutes, HRV, SpO2, resting HR (sync-extras)
 
-A second edge function (`sync-extras`) fetches distance and active minutes in parallel and upserts them into the `activity` table without touching `steps`.
+`sync-extras` fetches all activity-derived metrics and upserts them into the `activity` table without touching `steps`.
 
-### Data types
+### Data types — all verified working (Fitbit Inspire 3, as of 2026-06-04)
 
-| Column | API data type | Response field | Notes |
-|---|---|---|---|
-| `km` | `distance` | `distance.millimetersSum` | Divide by 1,000,000 for km |
-| `active_minutes` | `active-minutes` | `activeMinutes.activeMinutesRollupByActivityLevel[*].activeMinutesSum` | Sum across all levels (LIGHT + VIGOROUS etc.) |
-| `resting_hr_bpm` | `heart-rate` | — | Requires `fitness.heart_rate.read` scope — **not in current refresh token**. Column exists, won't auto-populate until token is re-issued with that scope. |
+| Column | API data type | Endpoint | Response field | Notes |
+|---|---|---|---|---|
+| `km` | `distance` | `dailyRollUp` | `distance.millimetersSum` | Divide by 1,000,000 for km |
+| `active_minutes` | `active-minutes` | `dailyRollUp` | `activeMinutes.activeMinutesRollupByActivityLevel[*].activeMinutesSum` | Sum across all levels; 14-day cap |
+| `resting_hr_bpm` | `heart-rate` | `dailyRollUp` | `heartRate.beatsPerMinuteAvg` | Daily average HR |
+| `hrv_rmssd` | `heart-rate-variability` | `list` (paginated) | `heartRateVariability.rootMeanSquareOfSuccessiveDifferencesMilliseconds` | Averaged per day; Google Health only retains ~1 night of raw points |
+| `spo2_pct` | `oxygen-saturation` | `list` (paginated) | `oxygenSaturation.percentage` | Min per day (catches overnight dips); readings below 80% filtered as artifacts |
+
+### Data type name gotcha — sampleTime path
+
+HRV and SpO2 data points from the `list` endpoint nest the sample time under the type key, not at top level:
+```
+dp.heartRateVariability.sampleTime.civilTime.date   ✓
+dp.sampleTime.civilTime.date                        ✗ (doesn't exist)
+```
+The code auto-detects the key by iterating `Object.keys(dp)` and skipping `dataSource`.
 
 ### active-minutes 14-day cap
 
-The API rejects requests where `window_size_days × days_in_range > 14`. `sync-extras` automatically clamps `startDate` so it's never more than 13 days before `endDate` for the `active-minutes` fetch. Distance has no such limit.
+The API rejects requests where `window_size_days × days_in_range > 14`. `sync-extras` automatically clamps `startDate` to 13 days before `endDate` for the `active-minutes` fetch. Distance has no such limit.
 
-### OAuth scope needed for heart rate
+### What's NOT available from Fitbit Inspire 3
 
-Re-generate the refresh token via [Google OAuth Playground](https://developers.google.com/oauthplayground) adding `https://www.googleapis.com/auth/fitness.heart_rate.read` alongside the existing activity scope. Update the `GOOGLE_REFRESH_TOKEN` secret on both `sync-steps` and `sync-extras`.
+Probed 2026-06-04 — these either don't exist or return 0 data points:
+- `vo2-max` — valid type, 0 data (Inspire 3 doesn't estimate VO2 max)
+- `body-fat` — valid type, 0 data (no Aria scale)
+- `respiratory-rate`, `breathing-rate`, `respiration-rate` — invalid type names (not in this API)
+
+### OAuth — full scope list (all 3 required)
+
+```
+https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly
+https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly
+https://www.googleapis.com/auth/googlehealth.sleep.readonly
+```
+
+**To re-generate the refresh token:**
+1. Go to [Google OAuth Playground](https://developers.google.com/oauthplayground)
+2. Gear icon → "Use your own OAuth credentials" → enter Client ID + Secret
+3. Make sure `https://developers.google.com/oauthplayground` is in Authorized redirect URIs in Google Cloud Console → Credentials → OAuth client
+4. Paste all 3 scopes, click "Authorize APIs" → sign in → grant access
+5. Click "Exchange authorization code for tokens" → copy `refresh_token`
+6. Update `GOOGLE_REFRESH_TOKEN` via Supabase Management API or CLI on **all three** functions (`sync-steps`, `sync-extras`, `sync-sleep`)
 
 ### Edge function: `sync-extras`
 
@@ -290,7 +320,7 @@ Source: `supabase/functions/sync-extras/index.ts`. Deployed with `verify_jwt: fa
 supabase functions deploy sync-extras --project-ref rkxorbsusqfhlhrlajlj --no-verify-jwt
 ```
 
-Default: distance syncs last 30 days, active-minutes last 14 days. Returns `{ synced, rows, rawDistance, rawActiveMinutes, rawHeartRate, upsertError }`.
+Default: 30-day window (active-minutes capped to 14). HRV/SpO2 paginate through all available points via `page_size=200` + `page_token`. Returns `{ synced, rows, upsertError }`.
 
 ---
 
@@ -409,6 +439,19 @@ Pipeline:
 - **Stage timeline**: custom SVG — Y axis labels baked in as `<text>` elements, stage blocks as `<rect>`, thin vertical connector lines between stage transitions (Samsung Health style)
 - **Weekly bar**: bars scale to 10h max; duration text rendered inside each bar
 - **Stage colours**: Deep `#3a5fa8`, REM `#5ba4e6`, Light `#b47fdb`, Awake `#e8784a`
+
+### Recovery trends section (Sleep tab)
+
+Below the weekly sleep bar, a **RECOVERY — 30 DAYS** card shows SVG line charts for HRV, SpO₂, and resting HR. Powered by `useRecoveryTrends(date)` hook (`src/hooks/useRecoveryTrends.js`) which fetches the last 30 days of `resting_hr_bpm`, `hrv_rmssd`, `spo2_pct` from the `activity` table.
+
+- Section only renders if there are 2+ rows with any recovery data
+- Each metric only renders its chart if at least one non-null value exists
+- "Not enough data yet" shown for metrics with < 2 data points
+- HRV: purple `#b47fdb`, unit ms RMSSD — averaged across all readings per day
+- SpO₂: blue `#5ba4e6`, unit % min — minimum per day (catches overnight dips), artifact filter rejects readings < 80%
+- Resting HR: red `#e87a8a`, unit bpm avg — from `heart-rate` daily rollup
+
+**HRV data availability note:** Google Health only retains ~1 night of raw HRV data points (the list endpoint returns up to ~156 points, all from last night). Historical HRV accumulates one day at a time as you sync. SpO₂ has full paginated history available.
 
 ---
 
