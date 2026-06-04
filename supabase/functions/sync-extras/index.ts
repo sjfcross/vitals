@@ -51,13 +51,24 @@ async function fetchDailyRollup(accessToken: string, dataType: string, startDate
   return { ok: resp.ok, status: resp.status, data }
 }
 
-async function fetchList(accessToken: string, dataType: string) {
-  const resp = await fetch(
-    `https://health.googleapis.com/v4/users/me/dataTypes/${dataType}/dataPoints`,
-    { headers: { 'Authorization': `Bearer ${accessToken}` } }
-  )
-  const data = await resp.json()
-  return { ok: resp.ok, status: resp.status, data }
+async function fetchListAll(accessToken: string, dataType: string): Promise<{ ok: boolean; dataPoints: any[] }> {
+  const allPoints: any[] = []
+  let pageToken: string | null = null
+  let ok = true
+
+  do {
+    const url = new URL(`https://health.googleapis.com/v4/users/me/dataTypes/${dataType}/dataPoints`)
+    url.searchParams.set('page_size', '200')
+    if (pageToken) url.searchParams.set('page_token', pageToken)
+
+    const resp = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${accessToken}` } })
+    const data = await resp.json()
+    if (!resp.ok) { ok = false; break }
+    allPoints.push(...(data.dataPoints ?? []))
+    pageToken = data.nextPageToken ?? null
+  } while (pageToken)
+
+  return { ok, dataPoints: allPoints }
 }
 
 function parseDateFromDp(dp: any): string | null {
@@ -107,8 +118,8 @@ Deno.serve(async (req) => {
       fetchDailyRollup(accessToken, 'distance', startDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
       fetchDailyRollup(accessToken, 'active-minutes', amStartDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
       fetchDailyRollup(accessToken, 'heart-rate', startDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
-      fetchList(accessToken, 'heart-rate-variability').catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
-      fetchList(accessToken, 'oxygen-saturation').catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
+      fetchListAll(accessToken, 'heart-rate-variability').catch(() => ({ ok: false, dataPoints: [] })),
+      fetchListAll(accessToken, 'oxygen-saturation').catch(() => ({ ok: false, dataPoints: [] })),
     ])
 
     const byDate: Record<string, { date: string; km?: number; active_minutes?: number; resting_hr_bpm?: number; hrv_rmssd?: number; spo2_pct?: number }> = {}
@@ -155,7 +166,7 @@ Deno.serve(async (req) => {
     // HRV — list endpoint, average RMSSD per day, filter to requested range
     if (hrvResult.ok) {
       const rmssdByDate: Record<string, number[]> = {}
-      for (const dp of hrvResult.data.dataPoints ?? []) {
+      for (const dp of hrvResult.dataPoints ?? []) {
         const date = civilDateFromSampleTime(dp)
         if (!date || date < startDate || date > endDate) continue
         const val = dp.heartRateVariability?.rootMeanSquareOfSuccessiveDifferencesMilliseconds
@@ -173,7 +184,7 @@ Deno.serve(async (req) => {
     // SpO2 — list endpoint, min per day (catches overnight dips), filter to requested range
     if (spo2Result.ok) {
       const spo2ByDate: Record<string, number[]> = {}
-      for (const dp of spo2Result.data.dataPoints ?? []) {
+      for (const dp of spo2Result.dataPoints ?? []) {
         const date = civilDateFromSampleTime(dp)
         if (!date || date < startDate || date > endDate) continue
         const val = dp.oxygenSaturation?.percentage

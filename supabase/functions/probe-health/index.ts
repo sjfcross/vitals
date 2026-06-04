@@ -21,32 +21,38 @@ async function getAccessToken(): Promise<string> {
   return data.access_token
 }
 
-async function probeList(accessToken: string, dataType: string) {
-  const resp = await fetch(
-    `https://health.googleapis.com/v4/users/me/dataTypes/${dataType}/dataPoints`,
-    { headers: { 'Authorization': `Bearer ${accessToken}` } }
-  )
-  const data = await resp.json()
-  return { status: resp.status, ok: resp.ok, pointCount: data.dataPoints?.length ?? 0, sample: data.dataPoints?.[0] ?? null, error: data.error ?? null }
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const accessToken = await getAccessToken()
 
-  // These use list endpoint (not dailyRollUp)
-  const listTypes = ['heart-rate-variability', 'oxygen-saturation', 'vo2-max']
-  // Try alternate names for body fat and respiratory rate
-  const listTypeAlts = ['body-fat', 'respiratory-rate', 'breathing-rate', 'respiration-rate']
+  // Fetch HRV with page_size and try time-based params
+  const [r1, r2, r3] = await Promise.all([
+    // Default list
+    fetch('https://health.googleapis.com/v4/users/me/dataTypes/heart-rate-variability/dataPoints?page_size=200', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    }).then(r => r.json()),
+    // Try with start_time filter
+    fetch('https://health.googleapis.com/v4/users/me/dataTypes/heart-rate-variability/dataPoints?page_size=200&start_time=2026-05-01T00:00:00Z', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    }).then(r => r.json()),
+    // SpO2 with page_size
+    fetch('https://health.googleapis.com/v4/users/me/dataTypes/oxygen-saturation/dataPoints?page_size=200', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    }).then(r => r.json()),
+  ])
 
-  const results: Record<string, any> = {}
-
-  await Promise.all([...listTypes, ...listTypeAlts].map(async (t) => {
-    results[t] = await probeList(accessToken, t).catch(e => ({ error: e.message }))
-  }))
-
-  return new Response(JSON.stringify(results, null, 2), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-  })
+  return new Response(JSON.stringify({
+    hrv_default_count: r1.dataPoints?.length ?? 0,
+    hrv_default_keys: Object.keys(r1),
+    hrv_nextPageToken: r1.nextPageToken ?? null,
+    hrv_with_start_count: r2.dataPoints?.length ?? 0,
+    hrv_with_start_error: r2.error ?? null,
+    hrv_dates: (r1.dataPoints ?? []).map((dp: any) => {
+      const t = Object.keys(dp).find(k => k !== 'dataSource')
+      return dp[t as string]?.sampleTime?.civilTime?.date
+    }).filter(Boolean).slice(0, 10),
+    spo2_count: r3.dataPoints?.length ?? 0,
+    spo2_nextPageToken: r3.nextPageToken ?? null,
+  }, null, 2), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 })
