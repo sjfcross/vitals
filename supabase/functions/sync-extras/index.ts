@@ -38,7 +38,6 @@ async function fetchDailyRollup(accessToken: string, dataType: string, startDate
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      // window_size_days: 1 required by the API as of June 2026
       body: JSON.stringify({
         range: {
           start: civilDateTime(startDate, 0, 0, 0),
@@ -52,8 +51,23 @@ async function fetchDailyRollup(accessToken: string, dataType: string, startDate
   return { ok: resp.ok, status: resp.status, data }
 }
 
+async function fetchList(accessToken: string, dataType: string) {
+  const resp = await fetch(
+    `https://health.googleapis.com/v4/users/me/dataTypes/${dataType}/dataPoints`,
+    { headers: { 'Authorization': `Bearer ${accessToken}` } }
+  )
+  const data = await resp.json()
+  return { ok: resp.ok, status: resp.status, data }
+}
+
 function parseDateFromDp(dp: any): string | null {
   const d = dp.civilStartTime?.date
+  if (!d) return null
+  return `${d.year}-${String(d.month).padStart(2,'0')}-${String(d.day).padStart(2,'0')}`
+}
+
+function civilDateFromSampleTime(dp: any): string | null {
+  const d = dp?.sampleTime?.civilTime?.date
   if (!d) return null
   return `${d.year}-${String(d.month).padStart(2,'0')}-${String(d.day).padStart(2,'0')}`
 }
@@ -83,35 +97,36 @@ Deno.serve(async (req) => {
       return (d > s ? d : s).toISOString().split('T')[0]
     })()
 
-    // Type names are kebab-case in the URL path (per Google Health API docs)
-    const [distResult, amResult, hrResult] = await Promise.all([
+    const [distResult, amResult, hrResult, hrvResult, spo2Result] = await Promise.all([
       fetchDailyRollup(accessToken, 'distance', startDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
       fetchDailyRollup(accessToken, 'active-minutes', amStartDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
       fetchDailyRollup(accessToken, 'heart-rate', startDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
+      fetchList(accessToken, 'heart-rate-variability').catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
+      fetchList(accessToken, 'oxygen-saturation').catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
     ])
 
-    const byDate: Record<string, { date: string; km?: number; active_minutes?: number; resting_hr_bpm?: number }> = {}
+    const byDate: Record<string, { date: string; km?: number; active_minutes?: number; resting_hr_bpm?: number; hrv_rmssd?: number; spo2_pct?: number }> = {}
 
     function ensureDate(d: string) {
       if (!byDate[d]) byDate[d] = { date: d }
       return byDate[d]
     }
 
+    // Distance
     if (distResult.ok) {
       for (const dp of distResult.data.rollupDataPoints ?? []) {
         const date = parseDateFromDp(dp)
         if (!date) continue
-        // API returns millimeters in distance.millimetersSum
         const mm = dp.distance?.millimetersSum ?? dp.distance?.meters ?? dp.distance?.value
         if (mm != null) ensureDate(date).km = Math.round(parseFloat(mm) / 10000) / 100
       }
     }
 
+    // Active minutes
     if (amResult.ok) {
       for (const dp of amResult.data.rollupDataPoints ?? []) {
         const date = parseDateFromDp(dp)
         if (!date) continue
-        // Sum across all activity levels (LIGHT, MODERATE, VIGOROUS)
         const levels: any[] = dp.activeMinutes?.activeMinutesRollupByActivityLevel ?? []
         if (levels.length > 0) {
           const total = levels.reduce((sum: number, l: any) => sum + (parseInt(l.activeMinutesSum) || 0), 0)
@@ -120,14 +135,50 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Resting HR (daily rollup average)
     if (hrResult.ok) {
       for (const dp of hrResult.data.rollupDataPoints ?? []) {
         const date = parseDateFromDp(dp)
         if (!date) continue
-        // heart-rate daily rollup — keep raw for first-run debugging
         const hr = dp.heartRate ?? dp.heart_rate
         const bpm = hr?.beatsPerMinuteAvg ?? hr?.beatsPerMinuteMin ?? hr?.bpm ?? hr?.average ?? hr?.value
         if (bpm != null) ensureDate(date).resting_hr_bpm = Math.round(parseFloat(bpm))
+      }
+    }
+
+    // HRV — list endpoint, average RMSSD per day, filter to requested range
+    if (hrvResult.ok) {
+      const rmssdByDate: Record<string, number[]> = {}
+      for (const dp of hrvResult.data.dataPoints ?? []) {
+        const date = civilDateFromSampleTime(dp)
+        if (!date || date < startDate || date > endDate) continue
+        const val = dp.heartRateVariability?.rootMeanSquareOfSuccessiveDifferencesMilliseconds
+        if (val != null) {
+          if (!rmssdByDate[date]) rmssdByDate[date] = []
+          rmssdByDate[date].push(parseFloat(val))
+        }
+      }
+      for (const [date, vals] of Object.entries(rmssdByDate)) {
+        const avg = vals.reduce((a, b) => a + b, 0) / vals.length
+        ensureDate(date).hrv_rmssd = Math.round(avg * 10) / 10
+      }
+    }
+
+    // SpO2 — list endpoint, min per day (catches overnight dips), filter to requested range
+    if (spo2Result.ok) {
+      const spo2ByDate: Record<string, number[]> = {}
+      for (const dp of spo2Result.data.dataPoints ?? []) {
+        const date = civilDateFromSampleTime(dp)
+        if (!date || date < startDate || date > endDate) continue
+        const val = dp.oxygenSaturation?.percentage
+        if (val != null) {
+          if (!spo2ByDate[date]) spo2ByDate[date] = []
+          spo2ByDate[date].push(parseFloat(val))
+        }
+      }
+      for (const [date, vals] of Object.entries(spo2ByDate)) {
+        const min = Math.min(...vals)
+        ensureDate(date).spo2_pct = Math.round(min * 10) / 10
       }
     }
 
@@ -147,14 +198,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({
-        synced: rows.length,
-        rows,
-        rawDistance: distResult.data,
-        rawActiveMinutes: amResult.data,
-        rawHeartRate: hrResult.data,
-        upsertError,
-      }),
+      JSON.stringify({ synced: rows.length, rows, upsertError }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (err) {

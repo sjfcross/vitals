@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import dayjs from 'dayjs'
 import { useWeekSleep } from '../hooks/useSleep'
+import { useRecoveryTrends } from '../hooks/useRecoveryTrends'
 
 const STAGE_ORDER = ['AWAKE', 'REM', 'LIGHT', 'DEEP']
 const STAGE_COLOR = {
@@ -126,11 +127,61 @@ function SleepTimeline({ sleep }) {
   )
 }
 
+function TrendChart({ data, field, color, label, unit, decimals = 0 }) {
+  const vals = data.map(d => d[field]).filter(v => v != null)
+  if (vals.length < 2) return (
+    <div style={{ height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span style={{ fontSize: '0.68rem', color: '#52575c' }}>Not enough data yet</span>
+    </div>
+  )
+
+  const min = Math.min(...vals)
+  const max = Math.max(...vals)
+  const range = max - min || 1
+  const W = 400
+  const H = 56
+  const PAD = 4
+
+  const points = data
+    .filter(d => d[field] != null)
+    .map((d, i, arr) => {
+      const x = PAD + (i / (arr.length - 1)) * (W - PAD * 2)
+      const y = H - PAD - ((d[field] - min) / range) * (H - PAD * 2)
+      return `${x},${y}`
+    })
+    .join(' ')
+
+  const latest = vals[vals.length - 1]
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ flex: 1 }}>
+        <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
+          <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" opacity="0.8" />
+          {/* Last point dot */}
+          {(() => {
+            const last = points.split(' ').pop()
+            const [x, y] = last.split(',')
+            return <circle cx={x} cy={y} r="3" fill={color} />
+          })()}
+        </svg>
+      </div>
+      <div style={{ minWidth: 52, textAlign: 'right' }}>
+        <div className="mono" style={{ fontSize: '1.1rem', fontWeight: 500, color, lineHeight: 1 }}>
+          {latest.toFixed(decimals)}
+        </div>
+        <div style={{ fontSize: '0.6rem', color: '#6b6f73', marginTop: 2 }}>{unit}</div>
+      </div>
+    </div>
+  )
+}
+
 export function Sleep({ sleep, date, today, onDateChange, onSync }) {
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState(null)
   const dateInputRef = useRef(null)
   const { weekData, reload: reloadWeek } = useWeekSleep(date)
+  const { data: recoveryData } = useRecoveryTrends(date)
   const isToday = date === today
 
   function handleDateChange(newDate) { onDateChange(newDate) }
@@ -261,6 +312,29 @@ export function Sleep({ sleep, date, today, onDateChange, onSync }) {
             style={{ background: 'rgba(91,164,230,0.12)', border: '1px solid rgba(91,164,230,0.25)', borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontSize: '0.8rem', color: '#5ba4e6', fontFamily: 'inherit' }}>
             {syncing ? 'Syncing…' : 'Sync from Fitbit'}
           </button>
+        </div>
+      )}
+
+      {/* Recovery trends — 30 days */}
+      {recoveryData.length >= 2 && (
+        <div className="card fade-up stagger-3" style={{ padding: '14px 16px', marginTop: 12 }}>
+          <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em', marginBottom: 14 }}>RECOVERY — 30 DAYS</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {[
+              { field: 'hrv_rmssd',     color: '#b47fdb', label: 'HRV',       unit: 'ms RMSSD', decimals: 1 },
+              { field: 'spo2_pct',      color: '#5ba4e6', label: 'SpO₂',      unit: '% min',    decimals: 1 },
+              { field: 'resting_hr_bpm',color: '#e87a8a', label: 'Resting HR', unit: 'bpm avg',  decimals: 0 },
+            ].map(({ field, color, label, unit, decimals }) => {
+              const hasData = recoveryData.some(d => d[field] != null)
+              if (!hasData) return null
+              return (
+                <div key={field}>
+                  <div style={{ fontSize: '0.62rem', color: '#6b6f73', marginBottom: 4, letterSpacing: '0.03em' }}>{label}</div>
+                  <TrendChart data={recoveryData} field={field} color={color} label={label} unit={unit} decimals={decimals} />
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
