@@ -322,7 +322,6 @@ export function Sleep({ sleep, date, today, onDateChange, onSync }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {[
               { field: 'hrv_rmssd',     color: '#b47fdb', label: 'HRV',       unit: 'ms RMSSD', decimals: 1 },
-              { field: 'spo2_pct',      color: '#5ba4e6', label: 'SpO₂',      unit: '% min',    decimals: 1 },
               { field: 'resting_hr_bpm',color: '#e87a8a', label: 'Resting HR', unit: 'bpm avg',  decimals: 0 },
             ].map(({ field, color, label, unit, decimals }) => {
               const hasData = recoveryData.some(d => d[field] != null)
