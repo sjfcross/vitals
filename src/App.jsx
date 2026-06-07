@@ -79,6 +79,14 @@ function AppInner() {
     return { synced: stepsData.synced + extrasData.synced }
   }
 
+  async function syncHrIntraday() {
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-hr-intraday`
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error ?? 'HR sync failed')
+    return data
+  }
+
   async function syncSleep() {
     const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-sleep`
     const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
@@ -112,7 +120,7 @@ function AppInner() {
           />
         )}
         {tab === 'nutrition' && <Nutrition meals={meals} profile={profile} onDeleteMeal={deleteMeal} />}
-        {tab === 'activity' && <Activity activity={activity} profile={profile} date={date} today={today} onSave={saveActivity} onDateChange={setDate} onSync={syncAll} />}
+        {tab === 'activity' && <Activity activity={activity} profile={profile} date={date} today={today} onSave={saveActivity} onDateChange={setDate} onSync={syncAll} onSyncHr={syncHrIntraday} />}
         {tab === 'sleep' && <Sleep sleep={sleep} date={date} today={today} onDateChange={setDate} onSync={syncSleep} />}
         {tab === 'weight' && (
           <Weight

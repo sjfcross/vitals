@@ -1,9 +1,30 @@
-import { useState, useEffect, useRef } from 'react'
-import { BarChart, Bar, Cell, ResponsiveContainer } from 'recharts'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { BarChart, Bar, Cell, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import dayjs from 'dayjs'
 import { useWeekActivity } from '../hooks/useActivity'
+import { useHeartRateIntraday } from '../hooks/useHeartRateIntraday'
 
-export function Activity({ activity, profile, date, today, onSave, onDateChange, onSync }) {
+function HrTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null
+  const { x, bpm } = payload[0].payload
+  const d = new Date(x)
+  const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return (
+    <div style={{ background: '#1e2022', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '6px 10px', fontSize: '0.75rem' }}>
+      <div className="mono" style={{ color: '#e87a8a' }}>{bpm} bpm</div>
+      <div style={{ color: '#9ca0a4', marginTop: 2 }}>{timeStr}</div>
+    </div>
+  )
+}
+
+function formatHrTick(ts) {
+  const d = new Date(ts)
+  const h = d.getHours()
+  const hh = String(h).padStart(2, '0')
+  return h === 0 ? `${d.toLocaleDateString([], { weekday: 'short' })} 00` : `${hh}:00`
+}
+
+export function Activity({ activity, profile, date, today, onSave, onDateChange, onSync, onSyncHr }) {
   const [form, setForm] = useState({
     steps: activity?.steps || '',
     km: activity?.km || '',
@@ -16,8 +37,11 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
   const [saved, setSaved] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState(null)
+  const [hrSyncing, setHrSyncing] = useState(false)
+  const [hrSyncMsg, setHrSyncMsg] = useState(null)
   const dateInputRef = useRef(null)
   const { weekData, reload: reloadWeek } = useWeekActivity(date)
+  const { hrData, reload: reloadHr } = useHeartRateIntraday()
   const isToday = date === today
 
   useEffect(() => {
@@ -81,6 +105,42 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
       setTimeout(() => setSyncMsg(null), 3000)
     }
   }
+
+  async function handleSyncHr() {
+    setHrSyncing(true)
+    setHrSyncMsg(null)
+    try {
+      const data = await onSyncHr()
+      setHrSyncMsg(data.inserted > 0 ? `+${data.inserted} pts` : 'Up to date')
+      reloadHr()
+    } catch (err) {
+      setHrSyncMsg('Failed')
+      console.error('VITALS: HR sync error', err)
+    } finally {
+      setHrSyncing(false)
+      setTimeout(() => setHrSyncMsg(null), 3000)
+    }
+  }
+
+  // Generate 6h-aligned ticks across the 48h window
+  const hrTicks = useMemo(() => {
+    if (!hrData.length) return []
+    const sixH = 6 * 60 * 60 * 1000
+    const start = hrData[0].x
+    const end = hrData[hrData.length - 1].x
+    const ticks = []
+    const first = Math.ceil(start / sixH) * sixH
+    for (let t = first; t <= end; t += sixH) ticks.push(t)
+    return ticks
+  }, [hrData])
+
+  const hrDomain = useMemo(() => {
+    if (!hrData.length) return [40, 120]
+    const bpms = hrData.map(d => d.bpm)
+    const lo = Math.floor(Math.min(...bpms) / 10) * 10 - 10
+    const hi = Math.ceil(Math.max(...bpms) / 10) * 10 + 10
+    return [Math.max(0, lo), hi]
+  }, [hrData])
 
   return (
     <div style={{ padding: '16px 16px 100px' }}>
@@ -190,8 +250,67 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
         </div>
       </div>
 
+      {/* Heart rate 48h chart */}
+      <div className="card fade-up stagger-3" style={{ padding: '14px 16px', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em' }}>HEART RATE — 48H</div>
+          <button
+            onClick={handleSyncHr}
+            disabled={hrSyncing}
+            style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '3px 9px', cursor: hrSyncing ? 'default' : 'pointer', fontSize: '0.68rem', color: hrSyncMsg ? '#7ec87e' : '#9ca0a4', letterSpacing: '0.04em', opacity: hrSyncing ? 0.6 : 1 }}
+          >
+            {hrSyncing ? 'Syncing…' : hrSyncMsg ?? 'Sync HR'}
+          </button>
+        </div>
+
+        {hrData.length === 0 ? (
+          <div style={{ height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: '0.75rem', color: '#6b6f73' }}>No HR data yet — tap Sync HR</span>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={110}>
+            <AreaChart data={hrData} margin={{ top: 4, bottom: 0, left: -20, right: 4 }}>
+              <defs>
+                <linearGradient id="hrGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#e87a8a" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#e87a8a" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis
+                dataKey="x"
+                type="number"
+                scale="time"
+                domain={['dataMin', 'dataMax']}
+                ticks={hrTicks}
+                tickFormatter={formatHrTick}
+                tick={{ fill: '#6b6f73', fontSize: 10 }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                domain={hrDomain}
+                tick={{ fill: '#6b6f73', fontSize: 10 }}
+                axisLine={false}
+                tickLine={false}
+                tickCount={4}
+              />
+              <Tooltip content={<HrTooltip />} />
+              <Area
+                type="monotoneX"
+                dataKey="bpm"
+                stroke="#e87a8a"
+                strokeWidth={1.5}
+                fill="url(#hrGrad)"
+                dot={false}
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
       {/* Entry form */}
-      <div className="card fade-up stagger-3" style={{ padding: '16px' }}>
+      <div className="card fade-up stagger-4" style={{ padding: '16px' }}>
         <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em', marginBottom: 14 }}>{isToday ? 'LOG ACTIVITY' : `${dayjs(date).format('MMM D').toUpperCase()} — ACTIVITY`}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           {[
