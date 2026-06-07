@@ -45,8 +45,13 @@ Deno.serve(async (req) => {
       .limit(1)
       .single()
 
-    const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000)
-    const cursor: Date = maxRow?.timestamp ? new Date(maxRow.timestamp) : cutoff48h
+    const now = Date.now()
+    const cutoff48h = new Date(now - 48 * 60 * 60 * 1000)
+    // First sync: only go back 24h to stay within the 60s edge function timeout.
+    // Subsequent syncs are incremental from the cursor, so they're always fast.
+    const cursor: Date = maxRow?.timestamp
+      ? new Date(maxRow.timestamp)
+      : new Date(now - 24 * 60 * 60 * 1000)
 
     const accessToken = await getAccessToken()
 
@@ -59,7 +64,7 @@ Deno.serve(async (req) => {
 
     while (!done && pages < MAX_PAGES) {
       const url = new URL('https://health.googleapis.com/v4/users/me/dataTypes/heart-rate/dataPoints')
-      url.searchParams.set('page_size', '200')
+      url.searchParams.set('page_size', '1000')
       if (pageToken) url.searchParams.set('page_token', pageToken)
 
       const resp = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${accessToken}` } })
