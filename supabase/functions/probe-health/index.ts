@@ -24,35 +24,57 @@ async function getAccessToken(): Promise<string> {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const accessToken = await getAccessToken()
+  try {
+    const accessToken = await getAccessToken()
 
-  // Fetch HRV with page_size and try time-based params
-  const [r1, r2, r3] = await Promise.all([
-    // Default list
-    fetch('https://health.googleapis.com/v4/users/me/dataTypes/heart-rate-variability/dataPoints?page_size=200', {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    }).then(r => r.json()),
-    // Try with start_time filter
-    fetch('https://health.googleapis.com/v4/users/me/dataTypes/heart-rate-variability/dataPoints?page_size=200&start_time=2026-05-01T00:00:00Z', {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    }).then(r => r.json()),
-    // SpO2 with page_size
-    fetch('https://health.googleapis.com/v4/users/me/dataTypes/oxygen-saturation/dataPoints?page_size=200', {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    }).then(r => r.json()),
-  ])
+    // Fetch all SpO2 points (paginated)
+    const allPoints: any[] = []
+    let pageToken: string | null = null
+    do {
+      const url = new URL('https://health.googleapis.com/v4/users/me/dataTypes/oxygen-saturation/dataPoints')
+      url.searchParams.set('page_size', '200')
+      if (pageToken) url.searchParams.set('page_token', pageToken)
+      const resp = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+      const data = await resp.json()
+      allPoints.push(...(data.dataPoints ?? []))
+      pageToken = data.nextPageToken ?? null
+    } while (pageToken)
 
-  return new Response(JSON.stringify({
-    hrv_default_count: r1.dataPoints?.length ?? 0,
-    hrv_default_keys: Object.keys(r1),
-    hrv_nextPageToken: r1.nextPageToken ?? null,
-    hrv_with_start_count: r2.dataPoints?.length ?? 0,
-    hrv_with_start_error: r2.error ?? null,
-    hrv_dates: (r1.dataPoints ?? []).map((dp: any) => {
-      const t = Object.keys(dp).find(k => k !== 'dataSource')
-      return dp[t as string]?.sampleTime?.civilTime?.date
-    }).filter(Boolean).slice(0, 10),
-    spo2_count: r3.dataPoints?.length ?? 0,
-    spo2_nextPageToken: r3.nextPageToken ?? null,
-  }, null, 2), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    // Parse all values
+    const vals: number[] = []
+    for (const dp of allPoints) {
+      const val = parseFloat(dp.oxygenSaturation?.percentage ?? '')
+      if (!isNaN(val)) vals.push(Math.floor(val))
+    }
+
+    // Histogram: count per integer % value
+    const histogram: Record<number, number> = {}
+    for (const v of vals) {
+      histogram[v] = (histogram[v] ?? 0) + 1
+    }
+
+    // Print as sorted list with a simple bar
+    const rows = Object.entries(histogram)
+      .map(([pct, count]) => ({ pct: Number(pct), count }))
+      .sort((a, b) => a.pct - b.pct)
+
+    const maxCount = Math.max(...rows.map(r => r.count))
+    const barWidth = 40
+    const formatted = rows.map(r => {
+      const bar = '█'.repeat(Math.round(r.count / maxCount * barWidth))
+      return `${String(r.pct).padStart(3)}%  ${String(r.count).padStart(4)}  ${bar}`
+    }).join('\n')
+
+    return new Response(JSON.stringify({
+      total_points: vals.length,
+      histogram_text: formatted,
+      histogram_data: rows,
+    }, null, 2), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
+  } catch (err) {
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
+  }
 })

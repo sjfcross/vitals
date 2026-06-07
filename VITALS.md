@@ -28,7 +28,17 @@ Parser extracts: calories, protein, fat, sat. fat, carbs, sugar, added sugar, fi
 - Project: `rkxorbsusqfhlhrlajlj`
 - Tables: `meals`, `activity`, `weight`, `blood_pressure`, `sleep`, `user_profile`
 - All tables have RLS — authenticated users only
-- Edge functions: `sync-steps`, `sync-sleep`, `sync-extras` (distance, active minutes, resting HR)
+- Edge functions: `sync-steps`, `sync-sleep`, `sync-extras` (distance, active minutes, resting HR, HRV, SpO2)
+
+## Intraday heart rate (planned)
+
+Confirmed available: Inspire 3 sends `~3s` samples to Google Health (`heart-rate` dataPoints endpoint). Plan:
+
+- **0–48h**: raw ~3s samples stored in `heart_rate_intraday` table
+- **48h–30d**: downsampled to 1 point per minute (compress at sync time)
+- **30d+**: dropped (daily resting HR in `activity` covers long-term trend)
+
+Steady-state storage: ~100k rows / ~5MB. Sync function paginates raw points, compresses old data, drops expired data in one pass. UI: 24h HR curve in Activity tab.
 
 ## Design
 

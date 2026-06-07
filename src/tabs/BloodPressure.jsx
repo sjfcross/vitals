@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { ComposedChart, Line, Scatter, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine } from 'recharts'
 import dayjs from 'dayjs'
 import { DoctorView } from '../components/DoctorView'
@@ -23,6 +23,8 @@ export function BloodPressure({ entries, latest, onAdd }) {
   const [sys, setSys] = useState('')
   const [dia, setDia] = useState('')
   const [pulse, setPulse] = useState('')
+  const diaRef = useRef(null)
+  const pulseRef = useRef(null)
   const [time, setTime] = useState(dayjs().format('HH:mm'))
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
@@ -266,15 +268,15 @@ export function BloodPressure({ entries, latest, onAdd }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.72rem', color: '#9ca0a4', marginBottom: 5 }}>SYSTOLIC</label>
-            <input className="input mono" type="number" value={sys} onChange={e => setSys(e.target.value)} placeholder="120" />
+            <input className="input mono" type="number" value={sys} onChange={e => { setSys(e.target.value); if (e.target.value.length >= 3) diaRef.current?.focus() }} placeholder="120" />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '0.72rem', color: '#9ca0a4', marginBottom: 5 }}>DIASTOLIC</label>
-            <input className="input mono" type="number" value={dia} onChange={e => setDia(e.target.value)} placeholder="80" />
+            <input ref={diaRef} className="input mono" type="number" value={dia} onChange={e => { setDia(e.target.value); if (e.target.value.length >= 2) pulseRef.current?.focus() }} placeholder="80" />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '0.72rem', color: '#9ca0a4', marginBottom: 5 }}>PULSE (BPM)</label>
-            <input className="input mono" type="number" value={pulse} onChange={e => setPulse(e.target.value)} placeholder="72" />
+            <input ref={pulseRef} className="input mono" type="number" value={pulse} onChange={e => setPulse(e.target.value)} placeholder="72" />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '0.72rem', color: '#9ca0a4', marginBottom: 5 }}>TIME</label>

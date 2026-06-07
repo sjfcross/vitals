@@ -297,6 +297,15 @@ Probed 2026-06-04 — these either don't exist or return 0 data points:
 - `body-fat` — valid type, 0 data (no Aria scale)
 - `respiratory-rate`, `breathing-rate`, `respiration-rate` — invalid type names (not in this API)
 
+### SpO2 — synced but not displayed
+
+Probed 2026-06-06. Full histogram of ~1,989 raw points revealed two completely separate populations:
+- **50%** — 514 readings, pure sensor dropout artifacts
+- **74–91%** — ~130 scattered readings, motion artifacts
+- **92–99%** — 1,283 real readings, peaking at 93–94%
+
+Cutoff is clearly at 92%. However, 93–94% overnight is slightly below clinical normal (95–100%), which could indicate mild sleep apnea or sensor error (±2–3%). Data quality not good enough to display meaningfully. **SpO2 removed from the recovery trends graph** (`Sleep.jsx`, `useRecoveryTrends.js`). Still stored in `activity.spo2_pct` for future reference.
+
 ### OAuth — full scope list (all 3 required)
 
 ```
@@ -452,6 +461,52 @@ Below the weekly sleep bar, a **RECOVERY — 30 DAYS** card shows SVG line chart
 - Resting HR: red `#e87a8a`, unit bpm avg — from `heart-rate` daily rollup
 
 **HRV data availability note:** Google Health only retains ~1 night of raw HRV data points (the list endpoint returns up to ~156 points, all from last night). Historical HRV accumulates one day at a time as you sync. SpO₂ has full paginated history available.
+
+---
+
+## Google Health API integration — intraday heart rate (planned)
+
+### What's confirmed
+
+Probed 2026-06-06 via `probe-health` edge function. The `heart-rate` dataPoints list endpoint returns raw samples from the Inspire 3 at ~3-second intervals:
+
+```json
+{
+  "dataSource": { "recordingMethod": "PASSIVELY_MEASURED", "device": { "displayName": "Inspire 3" }, "platform": "FITBIT" },
+  "heartRate": {
+    "sampleTime": {
+      "physicalTime": "2026-06-06T20:10:15Z",
+      "utcOffset": "3600s",
+      "civilTime": { "date": { "year": 2026, "month": 6, "day": 6 }, "time": { "hours": 21, "minutes": 10, "seconds": 15 } }
+    },
+    "beatsPerMinute": "81"
+  }
+}
+```
+
+~28,800 points per day. Pagination required (`page_size=200` + `page_token`). The `start_time` query param is **invalid** — filter by date after fetching.
+
+### Tiered storage plan
+
+| Tier | Retention | Resolution | Rows (steady state) |
+|---|---|---|---|
+| Raw | 0–48h | ~3s samples | ~57,600 |
+| Aggregated | 48h+ | 3 numbers (min/max/avg) written to `activity` | 0 extra |
+
+57,600 rows is trivial for Postgres — no slowdowns. Index on `(user_id, timestamp)` is sufficient; single-digit ms query time.
+
+No minute-tier needed. Once raw rows age past 48h, compute daily min/max/avg → write to `activity.hr_min`, `activity.hr_max`, `activity.resting_hr_bpm` → delete raw rows. The `heart_rate_intraday` table stays permanently small.
+
+### UI — two views via toggle (48H | 30D)
+
+- **48H**: continuous curve, every ~3s sample, timestamp on X — shows spikes in detail (spider incidents etc.)
+- **30D**: one band per day showing min/max range + avg line, date on X — shows recovery/stress patterns over the month. Just a query on `activity` columns, no extra data needed.
+
+### Build plan
+
+1. **Supabase migration**: new `heart_rate_intraday` table (`id`, `timestamp timestamptz`, `bpm smallint`, `user_id uuid`); add `hr_min smallint`, `hr_max smallint` columns to `activity`
+2. **Edge function `sync-hr-intraday`**: paginate today's raw points → upsert; for rows >48h old compute daily min/max/avg → write to `activity` → delete raw rows
+3. **UI**: HR chart in Activity tab with 48H/30D toggle — 48H is recharts AreaChart on raw points, 30D is ComposedChart (area for range band + line for avg), colour `#e87a8a`
 
 ---
 
