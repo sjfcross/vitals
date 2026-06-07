@@ -117,17 +117,154 @@ src/
     useActivity.js     — step/activity data
     useWeight.js       — all-time weight data; computes delta7, delta30
     useBloodPressure.js — all-time BP data; latest reading
+    useRecoveryTrends.js — last 30 days of HRV/SpO2/resting HR from activity table
   tabs/
     Overview.jsx       — rings + weekly bar chart + meal list + date nav + Log meal CTA
     Nutrition.jsx      — calorie hero, macro donut, full nutrient table, per-meal breakdown
     Activity.jsx       — step log + date nav
+    Sleep.jsx          — sleep chart + RECOVERY 30D section (HRV, resting HR)
     Weight.jsx         — current weight card, 7/30-day deltas, chart with 1W/4W/All toggle, log form
     BloodPressure.jsx  — latest SYS/DIA card + classification, dual-line chart with 1W/4W/All toggle, log form, recent readings list
   lib/
     supabase.js        — Supabase client init
   main.jsx             — app entry
-  App.jsx              — auth gate + tab routing + date state
+  App.jsx              — auth gate + tab routing + date state + sync buttons (syncSteps, syncExtras, syncSleep)
 ```
+
+---
+
+## Google Health / Fitbit Sync
+
+All sync runs as Supabase Edge Functions, triggered manually from the app (buttons in App.jsx). OAuth credentials stored as Supabase secrets.
+
+### Edge functions (`supabase/functions/`)
+| Function | What it does |
+|---|---|
+| `sync-steps` | Fetches daily step count from Google Health `steps` dailyRollUp → `activity` table |
+| `sync-extras` | Fetches distance, active_minutes, resting_hr_bpm, hrv_rmssd, spo2_pct → `activity` table |
+| `sync-sleep` | Fetches sleep sessions from Google Health → `sleep` table |
+| `probe-health` | Debug/exploration function — currently probes HR data shape (see below) |
+
+Deploy command: `npx supabase functions deploy <name> --project-ref rkxorbsusqfhlhrlajlj --no-verify-jwt`
+
+### Confirmed Google Health HR data (probed 2026-06-07)
+
+**Daily rollup (`heart-rate` dailyRollUp):**
+- Returns `beatsPerMinuteAvg` (float), `beatsPerMinuteMax` (int), `beatsPerMinuteMin` (int) per day ✅
+- Currently only `beatsPerMinuteAvg` is saved to `activity.resting_hr_bpm` — min/max not yet stored
+
+**Intraday raw (`heart-rate` list endpoint):**
+- ~1–2 second granularity from Inspire 3 (PASSIVELY_MEASURED via FITBIT platform)
+- API returns newest-first, no server-side time filter — must paginate and stop at cursor
+- 200 points = ~7 minutes of data → a full day is ~40,000+ points
+- Field shape per point:
+```json
+{
+  "heartRate": {
+    "sampleTime": {
+      "physicalTime": "2026-06-07T14:21:27Z",
+      "utcOffset": "3600s",
+      "civilTime": { "date": { "year": 2026, "month": 6, "day": 7 }, "time": { "hours": 15, "minutes": 21, "seconds": 27 } }
+    },
+    "beatsPerMinute": "108"
+  },
+  "dataSource": { "recordingMethod": "PASSIVELY_MEASURED", "device": { "displayName": "Inspire 3" }, "platform": "FITBIT" }
+}
+```
+
+---
+
+## Next Task: HR Intraday Feature (48h Rolling Chart)
+
+### What we're building
+A rolling 48-hour heart rate chart in the Activity (Move) tab. One data point per 5 seconds, continuously rolling — old data drops off, new data added on each sync.
+
+### Design decisions confirmed
+- **Granularity stored:** 5s buckets (downsample raw ~1-2s points into 5s avg during sync)
+- **Retention:** 48h rolling window — rows older than 48h deleted on each sync run
+- **Max rows:** 48h × 3600 ÷ 5 = **34,560 rows** — trivial for Postgres
+- **Sync strategy:** cursor-based incremental — query `MAX(timestamp)` from DB, page API newest-first, stop when hitting data older than cursor. First sync uses cursor = now - 48h.
+- **Chart:** Recharts `AreaChart`, timestamp X, bpm Y, color `#e87a8a`, gradient fill
+
+### Step 1 — Supabase migration (DO THIS FIRST)
+
+Run this SQL in Supabase dashboard (SQL editor):
+
+```sql
+-- New table for rolling 48h intraday HR
+CREATE TABLE heart_rate_intraday (
+  id          bigserial PRIMARY KEY,
+  user_id     uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id),
+  timestamp   timestamptz NOT NULL,
+  bpm         smallint NOT NULL
+);
+
+-- Fast range queries
+CREATE INDEX idx_hr_intraday_user_time ON heart_rate_intraday (user_id, timestamp DESC);
+
+-- Unique constraint to allow upsert by (user_id, timestamp)
+ALTER TABLE heart_rate_intraday ADD CONSTRAINT hr_intraday_user_ts UNIQUE (user_id, timestamp);
+
+-- RLS
+ALTER TABLE heart_rate_intraday ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users own their HR data" ON heart_rate_intraday
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+GRANT ALL ON heart_rate_intraday TO anon, authenticated;
+GRANT USAGE, SELECT ON SEQUENCE heart_rate_intraday_id_seq TO anon, authenticated;
+
+-- Also add hr_min and hr_max to activity table (for 30D daily rollup chart — separate feature)
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS hr_min smallint;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS hr_max smallint;
+```
+
+### Step 2 — Edge function `sync-hr-intraday`
+
+File: `supabase/functions/sync-hr-intraday/index.ts`
+
+Logic:
+1. Get Supabase service-role client
+2. Query `SELECT MAX(timestamp) FROM heart_rate_intraday WHERE user_id = auth.uid()` — use service role so no RLS issue
+3. Set cursor = result ?? (now - 48h)
+4. Get Google access token
+5. Paginate `heart-rate` list endpoint newest-first:
+   - For each page, read points
+   - Stop paging when a point's `physicalTime` < cursor
+   - Collect all points newer than cursor
+6. Downsample into 5s buckets: bucket key = `floor(unixMs / 5000) * 5000`, avg bpm per bucket
+7. Upsert into `heart_rate_intraday` (conflict on `user_id, timestamp` → do nothing or update bpm)
+8. Delete rows where `timestamp < NOW() - INTERVAL '48 hours'`
+9. Return count of new rows inserted + rows deleted
+
+### Step 3 — React hook `useHeartRateIntraday`
+
+File: `src/hooks/useHeartRateIntraday.js`
+
+```js
+// SELECT timestamp, bpm FROM heart_rate_intraday
+// WHERE timestamp > now - 48h
+// ORDER BY timestamp ASC
+// Returns array of { x: unixMs, bpm: number }
+```
+
+### Step 4 — UI in Activity tab
+
+Add a "HEART RATE — 48H" card to `src/tabs/Activity.jsx` above or below the steps section:
+- Uses `useHeartRateIntraday()`
+- Recharts `AreaChart` with `Area` (fill gradient `#e87a8a` → transparent, stroke `#e87a8a`)
+- X axis: formatted time labels (every 6h: "00:00", "06:00" etc, or "Yesterday 18:00")
+- Y axis: auto domain from data, no label
+- Custom tooltip showing time + bpm
+- Empty state: muted text "No HR data yet — tap sync"
+- Sync button wired to call `sync-hr-intraday` edge function (same pattern as existing sync buttons in App.jsx)
+
+### Colour palette reminder
+| Token | Value | Usage |
+|---|---|---|
+| HR / systolic | `#e87a8a` | heart rate line + area |
+| Card bg | `#161819` | `.card` |
+| Elevated bg | `#1e2022` | inputs, inner cards |
+| Muted text | `#9ca0a4` | labels |
+| Subtle text | `#6b6f73` | secondary info |
 
 ---
 
@@ -219,6 +356,11 @@ Uses `select('*')` — any new column added to the DB automatically comes back i
 
 ### Chart
 Dual-line recharts chart — systolic (`#e87a8a`) and diastolic (`#5ba4e6`). Reference lines at 120 (systolic normal ceiling) and 80 (diastolic normal ceiling). Range toggle: 1W / 4W / All.
+
+### BP input auto-advance
+- Systolic → Diastolic: auto-focuses after 3 digits
+- Diastolic → Pulse: auto-focuses after 2 digits
+- Implemented via `useRef` (`diaRef`, `pulseRef`) + `onChange` length check
 
 ### Known issue
 Chart is hidden when `entries.length <= 1`. With only 1 data point you can't draw a line, so the chart card doesn't render. Fix: always show the chart card but with a placeholder message when there's only 1 point.

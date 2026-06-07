@@ -95,6 +95,8 @@ Each domain hook (`useMeals`, `useActivity`, etc.) owns its own Supabase fetches
 
 **Paste-to-log meals** — `parsePaste` in `LogMealSheet` regex-extracts nutrition fields from Claude's text output. Triggers automatically when paste exceeds 20 characters. No API call — purely client-side regex.
 
+**BP input auto-advance** — In the BP log form (`BloodPressure.jsx`), the systolic field auto-focuses diastolic after 3 digits, and diastolic auto-focuses pulse after 2 digits. Implemented via `useRef` + `onChange` length check.
+
 **ErrorBoundary** — wraps `AppInner` as a class component. Catches render errors and shows a retry screen instead of a blank app.
 
 ---
