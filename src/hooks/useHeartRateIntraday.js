@@ -7,14 +7,10 @@ export function useHeartRateIntraday() {
 
   async function load() {
     setLoading(true)
-    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
-    const { data, error } = await supabase
-      .from('heart_rate_intraday')
-      .select('timestamp, bpm')
-      .gte('timestamp', cutoff)
-      .order('timestamp', { ascending: true })
+    const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
+    const { data, error } = await supabase.rpc('get_hr_intraday_chart', { since_ts: since })
     if (!error && data) {
-      setHrData(data.map(r => ({ x: new Date(r.timestamp).getTime(), bpm: r.bpm })))
+      setHrData(data.map(r => ({ x: new Date(r.t).getTime(), bpm: r.bpm })))
     }
     setLoading(false)
   }
