@@ -174,88 +174,31 @@ Deploy command: `npx supabase functions deploy <name> --project-ref rkxorbsusqfh
 
 ---
 
-## Next Task: HR Intraday Feature (48h Rolling Chart)
+## HR Intraday Feature — Current State (REDO PLANNED)
 
-### What we're building
-A rolling 48-hour heart rate chart in the Activity (Move) tab. One data point per 5 seconds, continuously rolling — old data drops off, new data added on each sync.
+### What's already built and working
 
-### Design decisions confirmed
-- **Granularity stored:** 5s buckets (downsample raw ~1-2s points into 5s avg during sync)
-- **Retention:** 48h rolling window — rows older than 48h deleted on each sync run
-- **Max rows:** 48h × 3600 ÷ 5 = **34,560 rows** — trivial for Postgres
-- **Sync strategy:** cursor-based incremental — query `MAX(timestamp)` from DB, page API newest-first, stop when hitting data older than cursor. First sync uses cursor = now - 48h.
-- **Chart:** Recharts `AreaChart`, timestamp X, bpm Y, color `#e87a8a`, gradient fill
+**Infrastructure — do not rebuild:**
+- `heart_rate_intraday` table exists with RLS, unique constraint on `(user_id, timestamp)`, index on `(user_id, timestamp DESC)`
+- `pgrst.db_max_rows = 50000` set on `authenticator` role
+- Grants on table and sequence for `anon`, `authenticated`, `service_role`
+- `get_hr_hourly_chart(since_ts timestamptz)` RPC — returns `(h timestamptz, avg_bpm smallint, max_bpm smallint)` per hour for 24h
+- `sync-hr-intraday` edge function deployed and working — cursor-based incremental sync, 5s bucket downsampling, 48h pruning, page_size=1000
 
-### Step 1 — Supabase migration (DO THIS FIRST)
+**Current UI (to be redesigned):**
+- `src/hooks/useHeartRateIntraday.js` — `useHeartRateIntraday()` hook (hourly RPC) + `fetchHrZoom(centerMs)` (raw 5s query for 3h window)
+- `src/tabs/Activity.jsx` — has a 24-hourly-bar overview + click-to-zoom 5s AreaChart. User says this is not helpful — redo the chart design.
+- `src/App.jsx` — `syncHrIntraday()` wired as `onSyncHr` prop to Activity
 
-Run this SQL in Supabase dashboard (SQL editor):
+### What needs to be redone
 
-```sql
--- New table for rolling 48h intraday HR
-CREATE TABLE heart_rate_intraday (
-  id          bigserial PRIMARY KEY,
-  user_id     uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id),
-  timestamp   timestamptz NOT NULL,
-  bpm         smallint NOT NULL
-);
+The chart UI in Activity.jsx needs a better design. Start fresh on the HR card — discuss with user what would actually be useful before implementing. The hook and edge function are fine; only the visual component needs rethinking.
 
--- Fast range queries
-CREATE INDEX idx_hr_intraday_user_time ON heart_rate_intraday (user_id, timestamp DESC);
-
--- Unique constraint to allow upsert by (user_id, timestamp)
-ALTER TABLE heart_rate_intraday ADD CONSTRAINT hr_intraday_user_ts UNIQUE (user_id, timestamp);
-
--- RLS
-ALTER TABLE heart_rate_intraday ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "users own their HR data" ON heart_rate_intraday
-  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-GRANT ALL ON heart_rate_intraday TO anon, authenticated;
-GRANT USAGE, SELECT ON SEQUENCE heart_rate_intraday_id_seq TO anon, authenticated;
-
--- Also add hr_min and hr_max to activity table (for 30D daily rollup chart — separate feature)
-ALTER TABLE activity ADD COLUMN IF NOT EXISTS hr_min smallint;
-ALTER TABLE activity ADD COLUMN IF NOT EXISTS hr_max smallint;
-```
-
-### Step 2 — Edge function `sync-hr-intraday`
-
-File: `supabase/functions/sync-hr-intraday/index.ts`
-
-Logic:
-1. Get Supabase service-role client
-2. Query `SELECT MAX(timestamp) FROM heart_rate_intraday WHERE user_id = auth.uid()` — use service role so no RLS issue
-3. Set cursor = result ?? (now - 48h)
-4. Get Google access token
-5. Paginate `heart-rate` list endpoint newest-first:
-   - For each page, read points
-   - Stop paging when a point's `physicalTime` < cursor
-   - Collect all points newer than cursor
-6. Downsample into 5s buckets: bucket key = `floor(unixMs / 5000) * 5000`, avg bpm per bucket
-7. Upsert into `heart_rate_intraday` (conflict on `user_id, timestamp` → do nothing or update bpm)
-8. Delete rows where `timestamp < NOW() - INTERVAL '48 hours'`
-9. Return count of new rows inserted + rows deleted
-
-### Step 3 — React hook `useHeartRateIntraday`
-
-File: `src/hooks/useHeartRateIntraday.js`
-
-```js
-// SELECT timestamp, bpm FROM heart_rate_intraday
-// WHERE timestamp > now - 48h
-// ORDER BY timestamp ASC
-// Returns array of { x: unixMs, bpm: number }
-```
-
-### Step 4 — UI in Activity tab
-
-Add a "HEART RATE — 48H" card to `src/tabs/Activity.jsx` above or below the steps section:
-- Uses `useHeartRateIntraday()`
-- Recharts `AreaChart` with `Area` (fill gradient `#e87a8a` → transparent, stroke `#e87a8a`)
-- X axis: formatted time labels (every 6h: "00:00", "06:00" etc, or "Yesterday 18:00")
-- Y axis: auto domain from data, no label
-- Custom tooltip showing time + bpm
-- Empty state: muted text "No HR data yet — tap sync"
-- Sync button wired to call `sync-hr-intraday` edge function (same pattern as existing sync buttons in App.jsx)
+### Key facts to remember
+- Data: ~11,500 rows, ~16–24h coverage at 5s resolution
+- Edge function timeout: 60s — first sync covers 24h only; subsequent syncs are incremental (fast)
+- `fetchHrZoom(centerMs)` queries `heart_rate_intraday` directly, window = centerMs ±1h/+2h (3h total), returns `{ x: unixMs, bpm: number }[]`
+- `useHeartRateIntraday()` calls `get_hr_hourly_chart` RPC, returns `{ x: unixMs, avg: number, max: number }[]`
 
 ### Colour palette reminder
 | Token | Value | Usage |
