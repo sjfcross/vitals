@@ -32,8 +32,18 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
-    const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1 })
-    if (!users?.length) throw new Error('No users found')
+    const authResp = await fetch(
+      `${Deno.env.get('SUPABASE_URL')}/auth/v1/admin/users?per_page=1`,
+      {
+        headers: {
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          'apikey': Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+        },
+      }
+    )
+    const authData = await authResp.json()
+    const users = authData.users ?? authData
+    if (!users?.length) throw new Error('No users found: ' + JSON.stringify(authData))
     const userId = users[0].id
 
     // Find cursor: latest timestamp already in DB
