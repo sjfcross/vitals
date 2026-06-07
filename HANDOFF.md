@@ -192,7 +192,17 @@ Deploy command: `npx supabase functions deploy <name> --project-ref rkxorbsusqfh
 
 ### What needs to be redone
 
-The chart UI in Activity.jsx needs a better design. Start fresh on the HR card — discuss with user what would actually be useful before implementing. The hook and edge function are fine; only the visual component needs rethinking.
+**Agreed design — build this:**
+- One continuous line/area chart across 24h at 3-minute resolution (~480 points, smooth)
+- Behind the line, the X axis is divided into 24 hour-wide background bands alternating between two subtle shades (e.g. `rgba(255,255,255,0.03)` / transparent) — these are the "hour bars"
+- The area fill of the line sits on top of those bands, so the bands visually run from 0 up to the line
+- Each hour band is a clickable hit zone — clicking zooms into that hour (same 5s zoom as before, but triggered by clicking the background band not a separate bar)
+- Hour labels sit below the chart on the band boundaries (every 3h or 6h to avoid crowding)
+- Zoom view: 5s resolution AreaChart for the clicked hour ±1h (3h window), back button to return
+
+**New SQL function needed:** `get_hr_3min_chart(since_ts)` — 3-min buckets instead of hourly, same pattern as `get_hr_hourly_chart`. Add to Supabase before building the UI.
+
+**Hook changes:** `useHeartRateIntraday` should call the new 3-min RPC instead of the hourly one. `fetchHrZoom` stays as-is.
 
 ### Key facts to remember
 - Data: ~11,500 rows, ~16–24h coverage at 5s resolution
