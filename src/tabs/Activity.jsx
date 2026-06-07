@@ -1,14 +1,31 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { BarChart, Bar, Cell, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import {
+  BarChart, Bar, Cell,
+  AreaChart, Area, XAxis, YAxis, Tooltip,
+  ResponsiveContainer,
+} from 'recharts'
 import dayjs from 'dayjs'
 import { useWeekActivity } from '../hooks/useActivity'
-import { useHeartRateIntraday } from '../hooks/useHeartRateIntraday'
+import { useHeartRateIntraday, fetchHrZoom } from '../hooks/useHeartRateIntraday'
 
-function HrTooltip({ active, payload }) {
+function HrBarTooltip({ active, payload }) {
+  if (!active || !payload?.length || !payload[0].payload.avg) return null
+  const { x, avg, max } = payload[0].payload
+  const label = new Date(x).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const labelEnd = new Date(x + 3600000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return (
+    <div style={{ background: '#1e2022', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '6px 10px', fontSize: '0.75rem' }}>
+      <div className="mono" style={{ color: '#e87a8a' }}>{avg} avg · {max} max bpm</div>
+      <div style={{ color: '#9ca0a4', marginTop: 2 }}>{label} – {labelEnd}</div>
+      <div style={{ color: '#6b6f73', marginTop: 2, fontSize: '0.68rem' }}>Click to zoom</div>
+    </div>
+  )
+}
+
+function HrZoomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null
   const { x, bpm } = payload[0].payload
-  const d = new Date(x)
-  const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const timeStr = new Date(x).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   return (
     <div style={{ background: '#1e2022', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '6px 10px', fontSize: '0.75rem' }}>
       <div className="mono" style={{ color: '#e87a8a' }}>{bpm} bpm</div>
@@ -17,11 +34,15 @@ function HrTooltip({ active, payload }) {
   )
 }
 
-function formatHrTick(ts) {
+function formatHourTick(ts) {
   const d = new Date(ts)
   const h = d.getHours()
-  const hh = String(h).padStart(2, '0')
-  return h === 0 ? `${d.toLocaleDateString([], { weekday: 'short' })} 00` : `${hh}:00`
+  return `${String(h).padStart(2, '0')}:00`
+}
+
+function formatZoomTick(ts) {
+  const d = new Date(ts)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 export function Activity({ activity, profile, date, today, onSave, onDateChange, onSync, onSyncHr }) {
@@ -39,9 +60,12 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
   const [syncMsg, setSyncMsg] = useState(null)
   const [hrSyncing, setHrSyncing] = useState(false)
   const [hrSyncMsg, setHrSyncMsg] = useState(null)
+  const [zoomedHour, setZoomedHour] = useState(null)
+  const [zoomData, setZoomData] = useState([])
+  const [zoomLoading, setZoomLoading] = useState(false)
   const dateInputRef = useRef(null)
   const { weekData, reload: reloadWeek } = useWeekActivity(date)
-  const { hrData, reload: reloadHr } = useHeartRateIntraday()
+  const { hourlyData, reload: reloadHr } = useHeartRateIntraday()
   const isToday = date === today
 
   useEffect(() => {
@@ -55,14 +79,44 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
     setDirty(false)
   }, [activity])
 
+  // Build 24 hourly slots from now-24h to now, merging in actual data
+  const hrSlots = useMemo(() => {
+    const now = Date.now()
+    const slots = []
+    for (let i = 23; i >= 0; i--) {
+      const slotMs = Math.floor((now - i * 3600000) / 3600000) * 3600000
+      const match = hourlyData.find(d => Math.abs(d.x - slotMs) < 1000)
+      slots.push({ x: slotMs, avg: match?.avg ?? null, max: match?.max ?? null })
+    }
+    return slots
+  }, [hourlyData])
+
+  const hrSlotTicks = useMemo(() => {
+    return hrSlots.filter(s => new Date(s.x).getHours() % 6 === 0).map(s => s.x)
+  }, [hrSlots])
+
+  const zoomTicks = useMemo(() => {
+    if (!zoomData.length) return []
+    const start = zoomData[0].x
+    const end = zoomData[zoomData.length - 1].x
+    const thirtyMin = 30 * 60 * 1000
+    const ticks = []
+    const first = Math.ceil(start / thirtyMin) * thirtyMin
+    for (let t = first; t <= end; t += thirtyMin) ticks.push(t)
+    return ticks
+  }, [zoomData])
+
+  const zoomDomain = useMemo(() => {
+    if (!zoomData.length) return [40, 120]
+    const bpms = zoomData.map(d => d.bpm)
+    return [Math.max(0, Math.floor(Math.min(...bpms) / 10) * 10 - 10), Math.ceil(Math.max(...bpms) / 10) * 10 + 10]
+  }, [zoomData])
+
   const steps = activity?.steps || 0
   const target = profile?.target_steps || 10000
 
   function set(field) {
-    return e => {
-      setForm(f => ({ ...f, [field]: e.target.value }))
-      setDirty(true)
-    }
+    return e => { setForm(f => ({ ...f, [field]: e.target.value })); setDirty(true) }
   }
 
   function handleDateChange(newDate) {
@@ -80,67 +134,50 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
       workout_duration_min: form.workout_duration_min ? parseInt(form.workout_duration_min) : null,
     })
     setSaving(false)
-    if (!error) {
-      setDirty(false)
-      setSaved(true)
-      reloadWeek()
-      setTimeout(() => setSaved(false), 2000)
-    } else {
-      console.error('VITALS: save activity error', error)
-    }
+    if (!error) { setDirty(false); setSaved(true); reloadWeek(); setTimeout(() => setSaved(false), 2000) }
+    else console.error('VITALS: save activity error', error)
   }
 
   async function handleSync() {
-    setSyncing(true)
-    setSyncMsg(null)
+    setSyncing(true); setSyncMsg(null)
     try {
       const data = await onSync()
       setSyncMsg(data.synced > 0 ? `Synced ${data.synced} day${data.synced !== 1 ? 's' : ''}` : 'No new data')
       reloadWeek()
-    } catch (err) {
-      setSyncMsg('Sync failed')
-      console.error('VITALS: sync error', err)
-    } finally {
-      setSyncing(false)
-      setTimeout(() => setSyncMsg(null), 3000)
-    }
+    } catch (err) { setSyncMsg('Sync failed'); console.error('VITALS: sync error', err) }
+    finally { setSyncing(false); setTimeout(() => setSyncMsg(null), 3000) }
   }
 
   async function handleSyncHr() {
-    setHrSyncing(true)
-    setHrSyncMsg(null)
+    setHrSyncing(true); setHrSyncMsg(null)
     try {
       const data = await onSyncHr()
       setHrSyncMsg(data.inserted > 0 ? `+${data.inserted} pts` : 'Up to date')
       reloadHr()
-    } catch (err) {
-      setHrSyncMsg('Failed')
-      console.error('VITALS: HR sync error', err)
-    } finally {
-      setHrSyncing(false)
-      setTimeout(() => setHrSyncMsg(null), 3000)
-    }
+      if (zoomedHour) {
+        const fresh = await fetchHrZoom(zoomedHour)
+        setZoomData(fresh)
+      }
+    } catch (err) { setHrSyncMsg('Failed'); console.error('VITALS: HR sync error', err) }
+    finally { setHrSyncing(false); setTimeout(() => setHrSyncMsg(null), 3000) }
   }
 
-  // Generate 6h-aligned ticks across the 48h window
-  const hrTicks = useMemo(() => {
-    if (!hrData.length) return []
-    const sixH = 6 * 60 * 60 * 1000
-    const start = hrData[0].x
-    const end = hrData[hrData.length - 1].x
-    const ticks = []
-    const first = Math.ceil(start / sixH) * sixH
-    for (let t = first; t <= end; t += sixH) ticks.push(t)
-    return ticks
-  }, [hrData])
+  async function handleBarClick(barPayload) {
+    const centerMs = barPayload?.x
+    if (!centerMs || !barPayload?.avg) return
+    setZoomedHour(centerMs)
+    setZoomLoading(true)
+    setZoomData([])
+    const data = await fetchHrZoom(centerMs)
+    setZoomData(data)
+    setZoomLoading(false)
+  }
 
-  const hrDomain = useMemo(() => {
-    if (!hrData.length) return [40, 120]
-    const bpms = hrData.map(d => d.bpm)
-    const lo = Math.floor(Math.min(...bpms) / 10) * 10 - 10
-    const hi = Math.ceil(Math.max(...bpms) / 10) * 10 + 10
-    return [Math.max(0, lo), hi]
-  }, [hrData])
+  const zoomLabel = zoomedHour
+    ? `${new Date(zoomedHour - 3600000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – ${new Date(zoomedHour + 7200000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    : null
+
+  const hasHrData = hrSlots.some(s => s.avg !== null)
 
   return (
     <div style={{ padding: '16px 16px 100px' }}>
@@ -154,33 +191,20 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
           <button
             onClick={() => dateInputRef.current?.showPicker?.() || dateInputRef.current?.click()}
             style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', fontSize: '0.72rem', color: '#9ca0a4', lineHeight: 1.4 }}
-            title="Pick a date"
-          >
-            📅
-          </button>
-          <input
-            ref={dateInputRef}
-            type="date"
-            max={today}
-            value={date}
+          >📅</button>
+          <input ref={dateInputRef} type="date" max={today} value={date}
             onChange={e => e.target.value && handleDateChange(e.target.value)}
-            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
-          />
+            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {!isToday && (
-            <button
-              onClick={() => handleDateChange(today)}
-              style={{ background: 'none', border: '1px solid rgba(180,127,219,0.35)', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: '0.68rem', color: '#b47fdb', letterSpacing: '0.04em' }}
-            >
+            <button onClick={() => handleDateChange(today)}
+              style={{ background: 'none', border: '1px solid rgba(180,127,219,0.35)', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: '0.68rem', color: '#b47fdb', letterSpacing: '0.04em' }}>
               Back to today
             </button>
           )}
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '3px 9px', cursor: syncing ? 'default' : 'pointer', fontSize: '0.68rem', color: syncMsg ? '#7ec87e' : '#9ca0a4', letterSpacing: '0.04em', opacity: syncing ? 0.6 : 1 }}
-          >
+          <button onClick={handleSync} disabled={syncing}
+            style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '3px 9px', cursor: syncing ? 'default' : 'pointer', fontSize: '0.68rem', color: syncMsg ? '#7ec87e' : '#9ca0a4', letterSpacing: '0.04em', opacity: syncing ? 0.6 : 1 }}>
             {syncing ? 'Syncing…' : syncMsg ?? 'Sync Fitbit'}
           </button>
         </div>
@@ -196,9 +220,7 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
               transform="rotate(-90 50 50)" style={{ transition: 'stroke-dasharray 0.6s ease' }} />
           </svg>
           <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <span className="mono" style={{ fontSize: '1.1rem', fontWeight: 500, color: '#f0eeea', lineHeight: 1 }}>
-              {steps.toLocaleString()}
-            </span>
+            <span className="mono" style={{ fontSize: '1.1rem', fontWeight: 500, color: '#f0eeea', lineHeight: 1 }}>{steps.toLocaleString()}</span>
             <span style={{ fontSize: '0.6rem', color: '#6b6f73', marginTop: 2 }}>steps</span>
           </div>
         </div>
@@ -250,68 +272,89 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
         </div>
       </div>
 
-      {/* Heart rate 48h chart */}
+      {/* Heart rate chart — overview or zoomed */}
       <div className="card fade-up stagger-3" style={{ padding: '14px 16px', marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em' }}>HEART RATE — 48H</div>
-          <button
-            onClick={handleSyncHr}
-            disabled={hrSyncing}
-            style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '3px 9px', cursor: hrSyncing ? 'default' : 'pointer', fontSize: '0.68rem', color: hrSyncMsg ? '#7ec87e' : '#9ca0a4', letterSpacing: '0.04em', opacity: hrSyncing ? 0.6 : 1 }}
-          >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {zoomedHour && (
+              <button onClick={() => { setZoomedHour(null); setZoomData([]) }}
+                style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: '0.68rem', color: '#9ca0a4' }}>
+                ←
+              </button>
+            )}
+            <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em' }}>
+              {zoomedHour ? `HR — ${zoomLabel}` : 'HEART RATE — 24H'}
+            </div>
+          </div>
+          <button onClick={handleSyncHr} disabled={hrSyncing}
+            style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '3px 9px', cursor: hrSyncing ? 'default' : 'pointer', fontSize: '0.68rem', color: hrSyncMsg ? '#7ec87e' : '#9ca0a4', letterSpacing: '0.04em', opacity: hrSyncing ? 0.6 : 1 }}>
             {hrSyncing ? 'Syncing…' : hrSyncMsg ?? 'Sync HR'}
           </button>
         </div>
 
-        {hrData.length === 0 ? (
-          <div style={{ height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: '0.75rem', color: '#6b6f73' }}>No HR data yet — tap Sync HR</span>
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height={110}>
-            <AreaChart data={hrData} margin={{ top: 4, bottom: 0, left: -20, right: 4 }}>
-              <defs>
-                <linearGradient id="hrGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#e87a8a" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#e87a8a" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis
-                dataKey="x"
-                type="number"
-                scale="time"
-                domain={['dataMin', 'dataMax']}
-                ticks={hrTicks}
-                tickFormatter={formatHrTick}
-                tick={{ fill: '#6b6f73', fontSize: 10 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                domain={hrDomain}
-                tick={{ fill: '#6b6f73', fontSize: 10 }}
-                axisLine={false}
-                tickLine={false}
-                tickCount={4}
-              />
-              <Tooltip content={<HrTooltip />} />
-              <Area
-                type="monotoneX"
-                dataKey="bpm"
-                stroke="#e87a8a"
-                strokeWidth={1.5}
-                fill="url(#hrGrad)"
-                dot={false}
-                isAnimationActive={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+        {/* Overview: hourly bar chart */}
+        {!zoomedHour && (
+          !hasHrData ? (
+            <div style={{ height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: '0.75rem', color: '#6b6f73' }}>No HR data yet — tap Sync HR</span>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={110}>
+              <BarChart data={hrSlots} barSize={14} margin={{ top: 4, bottom: 0, left: -20, right: 4 }}
+                onClick={({ activePayload }) => activePayload?.[0] && handleBarClick(activePayload[0].payload)}>
+                <XAxis dataKey="x" type="number" scale="time" domain={['dataMin', 'dataMax']}
+                  ticks={hrSlotTicks} tickFormatter={formatHourTick}
+                  tick={{ fill: '#6b6f73', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#6b6f73', fontSize: 10 }} axisLine={false} tickLine={false} tickCount={4} />
+                <Tooltip content={<HrBarTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                <Bar dataKey="avg" radius={[2, 2, 0, 0]} cursor="pointer">
+                  {hrSlots.map((s, i) => (
+                    <Cell key={i} fill={s.avg ? '#e87a8a' : 'rgba(255,255,255,0.06)'} fillOpacity={s.avg ? 1 : 1} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )
+        )}
+
+        {/* Zoomed: 5s area chart */}
+        {zoomedHour && (
+          zoomLoading ? (
+            <div style={{ height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: '0.75rem', color: '#6b6f73' }}>Loading…</span>
+            </div>
+          ) : zoomData.length === 0 ? (
+            <div style={{ height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: '0.75rem', color: '#6b6f73' }}>No data for this hour</span>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={110}>
+              <AreaChart data={zoomData} margin={{ top: 4, bottom: 0, left: -20, right: 4 }}>
+                <defs>
+                  <linearGradient id="hrZoomGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#e87a8a" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#e87a8a" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="x" type="number" scale="time" domain={['dataMin', 'dataMax']}
+                  ticks={zoomTicks} tickFormatter={formatZoomTick}
+                  tick={{ fill: '#6b6f73', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis domain={zoomDomain} tick={{ fill: '#6b6f73', fontSize: 10 }}
+                  axisLine={false} tickLine={false} tickCount={4} />
+                <Tooltip content={<HrZoomTooltip />} />
+                <Area type="monotoneX" dataKey="bpm" stroke="#e87a8a" strokeWidth={1.5}
+                  fill="url(#hrZoomGrad)" dot={false} isAnimationActive={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )
         )}
       </div>
 
       {/* Entry form */}
       <div className="card fade-up stagger-4" style={{ padding: '16px' }}>
-        <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em', marginBottom: 14 }}>{isToday ? 'LOG ACTIVITY' : `${dayjs(date).format('MMM D').toUpperCase()} — ACTIVITY`}</div>
+        <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em', marginBottom: 14 }}>
+          {isToday ? 'LOG ACTIVITY' : `${dayjs(date).format('MMM D').toUpperCase()} — ACTIVITY`}
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           {[
             ['Steps', 'steps', 'number', '8500'],
