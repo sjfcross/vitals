@@ -57,16 +57,15 @@ Deno.serve(async (req) => {
 
     const now = Date.now()
     const cutoff48h = new Date(now - 48 * 60 * 60 * 1000)
-    // First sync: only go back 24h to stay within the 60s edge function timeout.
-    // Subsequent syncs are incremental from the cursor, so they're always fast.
     const cursor: Date = maxRow?.timestamp
       ? new Date(maxRow.timestamp)
       : new Date(now - 24 * 60 * 60 * 1000)
 
     const accessToken = await getAccessToken()
 
-    // Paginate heart-rate list newest-first, stop at cursor
-    const rawPoints: Array<{ timestamp: string; bpm: number }> = []
+    // Paginate heart-rate list newest-first, stop at cursor.
+    // Downsample into 5s buckets on-the-fly to avoid a second CPU-heavy iteration.
+    const buckets = new Map<string, { sum: number; count: number }>()
     let pageToken: string | null = null
     let done = false
     let pages = 0
@@ -88,22 +87,17 @@ Deno.serve(async (req) => {
         const ts = new Date(physicalTime)
         if (ts <= cursor || ts < cutoff48h) { done = true; break }
         const bpm = parseInt(dp.heartRate.beatsPerMinute)
-        if (bpm > 0 && bpm < 300) rawPoints.push({ timestamp: physicalTime, bpm })
+        if (bpm <= 0 || bpm >= 300) continue
+        // Downsample into 5s bucket immediately
+        const ms = ts.getTime()
+        const key = new Date(Math.floor(ms / 5000) * 5000).toISOString()
+        const b = buckets.get(key)
+        if (b) { b.sum += bpm; b.count++ }
+        else buckets.set(key, { sum: bpm, count: 1 })
       }
 
       pageToken = data.nextPageToken ?? null
       if (!pageToken) done = true
-    }
-
-    // Downsample into 5s buckets
-    const buckets = new Map<string, { sum: number; count: number }>()
-    for (const { timestamp, bpm } of rawPoints) {
-      const ms = new Date(timestamp).getTime()
-      const key = new Date(Math.floor(ms / 5000) * 5000).toISOString()
-      if (!buckets.has(key)) buckets.set(key, { sum: 0, count: 0 })
-      const b = buckets.get(key)!
-      b.sum += bpm
-      b.count++
     }
 
     const rows = Array.from(buckets.entries()).map(([timestamp, { sum, count }]) => ({
@@ -112,13 +106,15 @@ Deno.serve(async (req) => {
       bpm: Math.round(sum / count),
     }))
 
+    // Upsert in 2000-row batches to stay well within PostgREST body limits
+    const BATCH = 2000
     let inserted = 0
-    if (rows.length > 0) {
+    for (let i = 0; i < rows.length; i += BATCH) {
       const { error } = await supabase
         .from('heart_rate_intraday')
-        .upsert(rows, { onConflict: 'user_id,timestamp', ignoreDuplicates: true })
+        .upsert(rows.slice(i, i + BATCH), { onConflict: 'user_id,timestamp', ignoreDuplicates: true })
       if (error) throw new Error('Upsert failed: ' + error.message)
-      inserted = rows.length
+      inserted += Math.min(BATCH, rows.length - i)
     }
 
     // Prune rows beyond 48h window
@@ -129,7 +125,7 @@ Deno.serve(async (req) => {
       .lt('timestamp', cutoff48h.toISOString())
 
     return new Response(
-      JSON.stringify({ inserted, deleted: deleted ?? 0, pages, rawPoints: rawPoints.length }),
+      JSON.stringify({ inserted, deleted: deleted ?? 0, pages, buckets: buckets.size }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (err) {
