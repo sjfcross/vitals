@@ -2,22 +2,22 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
 export function useHeartRateIntraday() {
-  const [hourlyData, setHourlyData] = useState([])
+  const [chartData, setChartData] = useState([])
   const [loading, setLoading] = useState(true)
 
   async function load() {
     setLoading(true)
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-    const { data, error } = await supabase.rpc('get_hr_hourly_chart', { since_ts: since })
+    const { data, error } = await supabase.rpc('get_hr_3min_chart', { since_ts: since })
     if (!error && data) {
-      setHourlyData(data.map(r => ({ x: new Date(r.h).getTime(), avg: r.avg_bpm, max: r.max_bpm })))
+      setChartData(data.map(r => ({ x: new Date(r.h).getTime(), avg: r.avg_bpm, max: r.max_bpm })))
     }
     setLoading(false)
   }
 
   useEffect(() => { load() }, [])
 
-  return { hourlyData, loading, reload: load }
+  return { chartData, loading, reload: load }
 }
 
 export async function fetchHrZoom(centerMs) {

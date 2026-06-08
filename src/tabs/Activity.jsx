@@ -1,23 +1,22 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   BarChart, Bar, Cell,
-  AreaChart, Area, XAxis, YAxis, Tooltip,
+  AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
 import dayjs from 'dayjs'
 import { useWeekActivity } from '../hooks/useActivity'
 import { useHeartRateIntraday, fetchHrZoom } from '../hooks/useHeartRateIntraday'
 
-function HrBarTooltip({ active, payload }) {
+function HrLineTooltip({ active, payload }) {
   if (!active || !payload?.length || !payload[0].payload.avg) return null
-  const { x, avg, max } = payload[0].payload
-  const label = new Date(x).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  const labelEnd = new Date(x + 3600000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const { x, avg } = payload[0].payload
+  const timeStr = new Date(x).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   return (
     <div style={{ background: '#1e2022', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '6px 10px', fontSize: '0.75rem' }}>
-      <div className="mono" style={{ color: '#e87a8a' }}>{avg} avg · {max} max bpm</div>
-      <div style={{ color: '#9ca0a4', marginTop: 2 }}>{label} – {labelEnd}</div>
-      <div style={{ color: '#6b6f73', marginTop: 2, fontSize: '0.68rem' }}>Click to zoom</div>
+      <div className="mono" style={{ color: '#e87a8a' }}>{avg} bpm</div>
+      <div style={{ color: '#9ca0a4', marginTop: 2 }}>{timeStr}</div>
+      <div style={{ color: '#6b6f73', marginTop: 2, fontSize: '0.68rem' }}>Click to zoom hour</div>
     </div>
   )
 }
@@ -36,8 +35,7 @@ function HrZoomTooltip({ active, payload }) {
 
 function formatHourTick(ts) {
   const d = new Date(ts)
-  const h = d.getHours()
-  return `${String(h).padStart(2, '0')}:00`
+  return `${String(d.getHours()).padStart(2, '0')}:00`
 }
 
 function formatZoomTick(ts) {
@@ -65,7 +63,7 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
   const [zoomLoading, setZoomLoading] = useState(false)
   const dateInputRef = useRef(null)
   const { weekData, reload: reloadWeek } = useWeekActivity(date)
-  const { hourlyData, reload: reloadHr } = useHeartRateIntraday()
+  const { chartData, reload: reloadHr } = useHeartRateIntraday()
   const isToday = date === today
 
   useEffect(() => {
@@ -79,21 +77,35 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
     setDirty(false)
   }, [activity])
 
-  // Build 24 hourly slots from now-24h to now, merging in actual data
-  const hrSlots = useMemo(() => {
+  // Stable 24h domain from mount time
+  const hrDomain = useMemo(() => {
     const now = Date.now()
-    const slots = []
-    for (let i = 23; i >= 0; i--) {
-      const slotMs = Math.floor((now - i * 3600000) / 3600000) * 3600000
-      const match = hourlyData.find(d => Math.abs(d.x - slotMs) < 1000)
-      slots.push({ x: slotMs, avg: match?.avg ?? null, max: match?.max ?? null })
-    }
-    return slots
-  }, [hourlyData])
+    return [now - 24 * 3600000, now]
+  }, [])
 
-  const hrSlotTicks = useMemo(() => {
-    return hrSlots.filter(s => new Date(s.x).getHours() % 6 === 0).map(s => s.x)
-  }, [hrSlots])
+  // Ticks every 6h aligned to clock hours
+  const hrTicks = useMemo(() => {
+    const [start, end] = hrDomain
+    const sixH = 6 * 3600000
+    const first = Math.ceil(start / sixH) * sixH
+    const ticks = []
+    for (let t = first; t <= end; t += sixH) ticks.push(t)
+    return ticks
+  }, [hrDomain])
+
+  // 24 alternating-shade hour bands
+  const hourBands = useMemo(() => {
+    const [start] = hrDomain
+    const bands = []
+    for (let h = 0; h < 24; h++) {
+      bands.push({
+        x1: start + h * 3600000,
+        x2: start + (h + 1) * 3600000,
+        even: h % 2 === 0,
+      })
+    }
+    return bands
+  }, [hrDomain])
 
   const zoomTicks = useMemo(() => {
     if (!zoomData.length) return []
@@ -114,6 +126,7 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
 
   const steps = activity?.steps || 0
   const target = profile?.target_steps || 10000
+  const hasHrData = chartData.length > 0
 
   function set(field) {
     return e => { setForm(f => ({ ...f, [field]: e.target.value })); setDirty(true) }
@@ -162,22 +175,26 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
     finally { setHrSyncing(false); setTimeout(() => setHrSyncMsg(null), 3000) }
   }
 
-  async function handleBarClick(barPayload) {
-    const centerMs = barPayload?.x
-    if (!centerMs || !barPayload?.avg) return
-    setZoomedHour(centerMs)
+  async function handleHourClick(hourMs) {
+    setZoomedHour(hourMs)
     setZoomLoading(true)
     setZoomData([])
-    const data = await fetchHrZoom(centerMs)
+    const data = await fetchHrZoom(hourMs)
     setZoomData(data)
     setZoomLoading(false)
+  }
+
+  function handleChartClick(data) {
+    if (!data?.activeLabel) return
+    const ts = Number(data.activeLabel)
+    if (isNaN(ts)) return
+    const hourMs = Math.floor(ts / 3600000) * 3600000
+    handleHourClick(hourMs)
   }
 
   const zoomLabel = zoomedHour
     ? `${new Date(zoomedHour - 3600000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – ${new Date(zoomedHour + 7200000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
     : null
-
-  const hasHrData = hrSlots.some(s => s.avg !== null)
 
   return (
     <div style={{ padding: '16px 16px 100px' }}>
@@ -292,43 +309,82 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
           </button>
         </div>
 
-        {/* Overview: hourly bar chart */}
+        {/* Overview: 24h continuous area chart with hour bands */}
         {!zoomedHour && (
           !hasHrData ? (
-            <div style={{ height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ fontSize: '0.75rem', color: '#6b6f73' }}>No HR data yet — tap Sync HR</span>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={110}>
-              <BarChart data={hrSlots} barSize={14} margin={{ top: 4, bottom: 0, left: -20, right: 4 }}
-                onClick={({ activePayload }) => activePayload?.[0] && handleBarClick(activePayload[0].payload)}>
-                <XAxis dataKey="x" type="number" scale="time" domain={['dataMin', 'dataMax']}
-                  ticks={hrSlotTicks} tickFormatter={formatHourTick}
-                  tick={{ fill: '#6b6f73', fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#6b6f73', fontSize: 10 }} axisLine={false} tickLine={false} tickCount={4} />
-                <Tooltip content={<HrBarTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-                <Bar dataKey="avg" radius={[2, 2, 0, 0]} cursor="pointer">
-                  {hrSlots.map((s, i) => (
-                    <Cell key={i} fill={s.avg ? '#e87a8a' : 'rgba(255,255,255,0.06)'} fillOpacity={s.avg ? 1 : 1} />
-                  ))}
-                </Bar>
-              </BarChart>
+            <ResponsiveContainer width="100%" height={140}>
+              <AreaChart
+                data={chartData}
+                margin={{ top: 4, bottom: 0, left: -20, right: 4 }}
+                onClick={handleChartClick}
+                style={{ cursor: 'pointer' }}
+              >
+                <defs>
+                  <linearGradient id="hrGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#e87a8a" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#e87a8a" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                {/* Alternating hour bands — drawn before Area so they're behind the fill */}
+                {hourBands.map((b, i) => (
+                  <ReferenceArea
+                    key={i}
+                    x1={b.x1}
+                    x2={b.x2}
+                    fill={b.even ? 'rgba(255,255,255,0.025)' : 'transparent'}
+                    stroke="none"
+                    ifOverflow="hidden"
+                  />
+                ))}
+                <XAxis
+                  dataKey="x"
+                  type="number"
+                  scale="time"
+                  domain={hrDomain}
+                  ticks={hrTicks}
+                  tickFormatter={formatHourTick}
+                  tick={{ fill: '#6b6f73', fontSize: 10 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fill: '#6b6f73', fontSize: 10 }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickCount={4}
+                />
+                <Tooltip content={<HrLineTooltip />} />
+                <Area
+                  type="monotoneX"
+                  dataKey="avg"
+                  stroke="#e87a8a"
+                  strokeWidth={1.5}
+                  fill="url(#hrGrad)"
+                  dot={false}
+                  isAnimationActive={false}
+                  connectNulls={false}
+                />
+              </AreaChart>
             </ResponsiveContainer>
           )
         )}
 
-        {/* Zoomed: 5s area chart */}
+        {/* Zoomed: 5s resolution area chart */}
         {zoomedHour && (
           zoomLoading ? (
-            <div style={{ height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ fontSize: '0.75rem', color: '#6b6f73' }}>Loading…</span>
             </div>
           ) : zoomData.length === 0 ? (
-            <div style={{ height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ fontSize: '0.75rem', color: '#6b6f73' }}>No data for this hour</span>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={110}>
+            <ResponsiveContainer width="100%" height={140}>
               <AreaChart data={zoomData} margin={{ top: 4, bottom: 0, left: -20, right: 4 }}>
                 <defs>
                   <linearGradient id="hrZoomGrad" x1="0" y1="0" x2="0" y2="1">
