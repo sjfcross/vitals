@@ -3,6 +3,15 @@ import dayjs from 'dayjs'
 
 const EMOJIS = ['🍽️','🥗','🥩','🍳','🥪','🍜','🍱','🥡','🍕','🍔','🌮','🌯','🥙','🥘','🍲','🥣','🫕','🧆','🥚','🧇','🥞','🧈','🍞','🥐','🫓','🧀','🥦','🥕','🍎','🍌','🫐','🍇','🧃','☕','🫖','🥤']
 
+const MEAL_PRESETS = [
+  { label: 'Breakfast', emoji: '🌅' },
+  { label: 'Lunch',     emoji: '🥗' },
+  { label: 'Vesper',    emoji: '🌆' },
+  { label: 'Snack',     emoji: '🍎' },
+  { label: 'Sweets',    emoji: '🍰' },
+  { label: 'Sandwich',  emoji: '🥪' },
+]
+
 function parsePaste(text) {
   const get = (patterns) => {
     for (const pat of patterns) {
@@ -32,7 +41,7 @@ function parsePaste(text) {
 }
 
 const EMPTY = {
-  name: '', description: '', emoji: '🍽️', time: dayjs().format('HH:mm'),
+  name: 'Breakfast', description: '', emoji: '🌅', time: dayjs().format('HH:mm'),
   calories: '', protein_g: '', fat_g: '', fat_saturated_g: '',
   carbs_g: '', sugar_g: '', sugar_added_g: '', fiber_g: '', sodium_mg: '',
   calcium_mg: '', iron_mg: '', potassium_mg: '', vitamin_c_mg: '', vitamin_d_ug: '',
@@ -45,6 +54,19 @@ export function LogMealSheet({ onClose, onSave, date }) {
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [emojiOpen, setEmojiOpen] = useState(false)
+  const [nameMode, setNameMode] = useState('Breakfast')
+
+  function handleNameMode(e) {
+    const val = e.target.value
+    setNameMode(val)
+    if (val === 'custom') {
+      setForm(f => ({ ...f, name: '', emoji: '🍽️' }))
+    } else {
+      const preset = MEAL_PRESETS.find(p => p.label === val)
+      setForm(f => ({ ...f, name: preset.label, emoji: preset.emoji }))
+      setEmojiOpen(false)
+    }
+  }
 
   function handlePaste(e) {
     const text = e.target.value
@@ -184,23 +206,29 @@ export function LogMealSheet({ onClose, onSave, date }) {
               <input className="input" type="text" value={form.description} onChange={set('description')} placeholder="e.g. beef burger with fries" maxLength={120} />
             </div>
 
-            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: '#9ca0a4', marginBottom: 5 }}>MEAL NAME</label>
-                <input className="input" type="text" value={form.name} onChange={set('name')} placeholder="e.g. Chicken caesar salad" autoFocus />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: '#9ca0a4', marginBottom: 5 }}>EMOJI</label>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: '#9ca0a4', marginBottom: 5 }}>MEAL NAME</label>
+              <select className="input" value={nameMode} onChange={handleNameMode} style={{ cursor: 'pointer' }}>
+                {MEAL_PRESETS.map(p => (
+                  <option key={p.label} value={p.label}>{p.emoji} {p.label}</option>
+                ))}
+                <option value="custom">✏️ Custom…</option>
+              </select>
+            </div>
+
+            {nameMode === 'custom' && (
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <input className="input" style={{ flex: 1 }} type="text" value={form.name} onChange={set('name')} placeholder="e.g. Chicken caesar salad" autoFocus />
                 <button onClick={() => setEmojiOpen(!emojiOpen)} style={{
                   width: 42, height: 42, background: 'var(--elevated)', border: '1px solid var(--border)',
-                  borderRadius: 8, fontSize: '1.2rem', cursor: 'pointer',
+                  borderRadius: 8, fontSize: '1.2rem', cursor: 'pointer', flexShrink: 0,
                 }}>
                   {form.emoji}
                 </button>
               </div>
-            </div>
+            )}
 
-            {emojiOpen && (
+            {nameMode === 'custom' && emojiOpen && (
               <div style={{ background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: 10, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {EMOJIS.map(e => (
                   <button key={e} onClick={() => { setForm(f => ({ ...f, emoji: e })); setEmojiOpen(false) }}
