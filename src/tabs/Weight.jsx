@@ -8,12 +8,13 @@ const RANGES = [
   { id: 'all', label: 'All', days: null },
 ]
 
-export function Weight({ entries, latest, delta7, delta30, profile, onAdd }) {
+export function Weight({ entries, latest, delta7, delta30, profile, onAdd, onDelete }) {
   const [kg, setKg] = useState('')
   const [time, setTime] = useState(dayjs().format('HH:mm'))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [range, setRange] = useState('1w')
+  const [confirmId, setConfirmId] = useState(null)
 
   const height = profile?.height_cm
   const bmi = height && latest ? (latest.weight_kg / ((height / 100) ** 2)).toFixed(1) : null
@@ -218,6 +219,65 @@ export function Weight({ entries, latest, delta7, delta30, profile, onAdd }) {
           {saving ? 'Saving…' : saved ? '✓ Logged' : 'Log weight'}
         </button>
       </div>
+
+      {/* History / manage entries */}
+      {entries.length > 0 && (
+        <div className="card fade-up stagger-4" style={{ padding: '16px', marginTop: 12 }}>
+          <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em', marginBottom: 14 }}>HISTORY</div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {[...entries].reverse().map((e, i) => (
+              <div
+                key={e.id}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 0',
+                  borderTop: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                  <span className="mono" style={{ fontSize: '1rem', color: '#f0c96a' }}>
+                    {parseFloat(e.weight_kg).toFixed(1)}
+                  </span>
+                  <span style={{ fontSize: '0.7rem', color: '#9ca0a4' }}>kg</span>
+                  <span style={{ fontSize: '0.72rem', color: '#6b6f73' }}>
+                    {dayjs(e.date).format('MMM D, YYYY')}{e.time ? ` · ${e.time.slice(0, 5)}` : ''}
+                  </span>
+                </div>
+                {confirmId === e.id ? (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={() => { onDelete(e.id); setConfirmId(null) }}
+                      style={{
+                        padding: '4px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                        fontSize: '0.68rem', fontFamily: 'DM Mono, monospace',
+                        background: 'rgba(232,120,74,0.18)', color: '#e8784a',
+                      }}
+                    >Delete</button>
+                    <button
+                      onClick={() => setConfirmId(null)}
+                      style={{
+                        padding: '4px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                        fontSize: '0.68rem', fontFamily: 'DM Mono, monospace',
+                        background: 'transparent', color: '#6b6f73',
+                      }}
+                    >Cancel</button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmId(e.id)}
+                    aria-label="Delete entry"
+                    style={{
+                      padding: '4px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                      fontSize: '0.82rem', lineHeight: 1, fontFamily: 'DM Mono, monospace',
+                      background: 'transparent', color: '#6b6f73',
+                    }}
+                  >✕</button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

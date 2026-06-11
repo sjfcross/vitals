@@ -141,7 +141,7 @@ All sync runs as Supabase Edge Functions, triggered manually from the app (butto
 | Function | What it does |
 |---|---|
 | `sync-steps` | Fetches daily step count from Google Health `steps` dailyRollUp → `activity` table |
-| `sync-extras` | Fetches distance, active_minutes, resting_hr_bpm, hrv_rmssd, spo2_pct → `activity` table |
+| `sync-extras` | Fetches distance, active_minutes, resting_hr_bpm, hrv_rmssd, spo2_pct → `activity` table. ⚠️ Resting HR lags in Google Health by a few days and there's no scheduled job — if the recovery graph shows stale resting HR, just re-run this function to backfill. Also has a latent NULL-overwrite upsert bug. See README "Troubleshooting: resting HR goes stale" + "Known latent bug". |
 | `sync-sleep` | Fetches sleep sessions from Google Health → `sleep` table |
 | `probe-health` | Debug/exploration function — currently probes HR data shape (see below) |
 

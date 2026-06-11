@@ -95,7 +95,7 @@ function AppInner() {
     await reloadSleep()
     return data
   }
-  const { entries, latest, delta7, delta30, addEntry } = useWeight()
+  const { entries, latest, delta7, delta30, addEntry, deleteEntry } = useWeight()
   const { entries: bpEntries, latest: bpLatest, addEntry: addBpEntry } = useBloodPressure()
 
   useEffect(() => {
@@ -125,7 +125,7 @@ function AppInner() {
         {tab === 'weight' && (
           <Weight
             entries={entries} latest={latest} delta7={delta7} delta30={delta30}
-            profile={profile} onAdd={addEntry}
+            profile={profile} onAdd={addEntry} onDelete={deleteEntry}
           />
         )}
         {tab === 'bp' && (

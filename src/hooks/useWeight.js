@@ -25,6 +25,17 @@ export function useWeight() {
     return { data, error }
   }
 
+  async function deleteEntry(id) {
+    const snapshot = entries
+    setEntries(prev => prev.filter(e => e.id !== id))
+    const { error } = await supabase.from('weight').delete().eq('id', id)
+    if (error) {
+      setEntries(snapshot)
+      console.error('VITALS: deleteEntry failed', error)
+    }
+    return { error }
+  }
+
   const latest = entries[entries.length - 1] || null
 
   const delta7 = (() => {
@@ -43,5 +54,5 @@ export function useWeight() {
     return (latest.weight_kg - old.weight_kg).toFixed(1)
   })()
 
-  return { entries, loading, addEntry, latest, delta7, delta30, reload: load }
+  return { entries, loading, addEntry, deleteEntry, latest, delta7, delta30, reload: load }
 }

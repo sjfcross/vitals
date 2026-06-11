@@ -333,6 +333,60 @@ supabase functions deploy sync-extras --project-ref rkxorbsusqfhlhrlajlj --no-ve
 
 Default: 30-day window (active-minutes capped to 14). HRV/SpO2 paginate through all available points via `page_size=200` + `page_token`. Returns `{ synced, rows, upsertError }`.
 
+### Troubleshooting: resting HR (or any metric) goes stale in the recovery graph
+
+**Symptom:** the recovery graph shows resting HR (or HRV) flat-lining / blank for the most recent few days while other metrics are current. Confirm with:
+```sql
+select date, resting_hr_bpm, hrv_rmssd from activity order by date desc limit 14;
+```
+If recent rows have `resting_hr_bpm = null` but older rows have values, it's this issue.
+
+**Root cause — data latency, not a code bug.** Google Health computes the daily `heart-rate` rollup with a few days' lag. `sync-extras` re-fetches the full 30-day window and upserts on every run, but it only fires when the app is opened (`App.jsx` → `syncExtras`); there is **no scheduled job**. So if no sync runs after Google backfills the value, the day stays `null` in our table forever.
+
+**Fix (immediate):** just re-run the function — it backfills the whole window:
+```powershell
+$h = @{ Authorization = "Bearer <ANON_KEY>"; "Content-Type"="application/json" }
+Invoke-RestMethod -Uri "https://rkxorbsusqfhlhrlajlj.supabase.co/functions/v1/sync-extras" -Method Post -Headers $h -Body '{"startDate":"2026-06-01","endDate":"2026-06-10"}'
+```
+Then refresh the app. (Verified 2026-06-10: re-running backfilled 06-05→06-10 resting HR that the daily syncs had missed.)
+
+**Fix (permanent) — DONE 2026-06-10:** a `pg_cron` job (`nightly-sync-extras`, jobid 1) calls `sync-extras` every night at **01:00 UTC (03:00 CEST)** via `pg_net`, so the 30-day window stays current regardless of when the app is opened. Inspect / manage it:
+```sql
+select jobid, schedule, jobname, active from cron.job where jobname = 'nightly-sync-extras';
+select * from cron.job_run_details where jobid = 1 order by start_time desc limit 5;  -- did it fire?
+select id, status_code, content::jsonb->>'synced' as synced, error_msg
+  from net._http_response order by id desc limit 5;                                   -- what the function returned
+-- to remove: select cron.unschedule('nightly-sync-extras');
+```
+**Gotcha:** `net.http_post` defaults to a **5000 ms timeout**, but `sync-extras` takes ~8s (paginated Google calls). The job sets `timeout_milliseconds := 30000` — don't drop that or every run will time out (the function may still finish server-side, but you lose the status/response). Extensions required: `pg_cron` + `pg_net` (both enabled).
+
+### ⚠️ Known latent bug: upsert can NULL-overwrite a good value
+
+`sync-extras` builds per-date row objects and only sets a metric key when a value was found (`if (bpm != null) ensureDate(date).resting_hr_bpm = ...`). It then calls `supabase.from('activity').upsert(rows, { onConflict: 'date' })`.
+
+supabase-js defaults to `defaultToNull: true`, and PostgREST builds the column list from the **union of keys across the whole batch**. So if one date in the batch has `resting_hr_bpm` and another (recent, still-lagging) date omits it, the column enters the statement and the omitting row sends `NULL` — the `ON CONFLICT DO UPDATE` then writes `NULL` over any existing good value for that date.
+
+- **Not** the cause of the "stale resting HR" symptom above (that's latency). This is a separate regression risk: low frequency, but it can *erase* data.
+- For it to bite: a date must already hold a good value, then come back empty from Google in a *later* batch that also contains that metric for other dates.
+
+**Recommended fix — COALESCE upsert via an RPC** (a missing metric can then never erase an existing one):
+```sql
+create or replace function upsert_activity(rows jsonb)
+returns void language sql as $$
+  insert into activity as a (date, km, active_minutes, resting_hr_bpm, hrv_rmssd, spo2_pct)
+  select (r->>'date')::date, (r->>'km')::numeric, (r->>'active_minutes')::int,
+         (r->>'resting_hr_bpm')::int, (r->>'hrv_rmssd')::numeric, (r->>'spo2_pct')::numeric
+  from jsonb_array_elements(rows) r
+  on conflict (date) do update set
+    km             = coalesce(excluded.km,             a.km),
+    active_minutes = coalesce(excluded.active_minutes, a.active_minutes),
+    resting_hr_bpm = coalesce(excluded.resting_hr_bpm, a.resting_hr_bpm),
+    hrv_rmssd      = coalesce(excluded.hrv_rmssd,      a.hrv_rmssd),
+    spo2_pct       = coalesce(excluded.spo2_pct,       a.spo2_pct);
+$$;
+```
+Then call `supabase.rpc('upsert_activity', { rows })` instead of `.upsert()`. Before committing, verify the exact PostgREST missing-key behavior for the installed `@supabase/supabase-js` version rather than assuming.
+
 ---
 
 ## Google Health API integration — sleep

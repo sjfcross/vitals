@@ -206,6 +206,13 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
+    // ⚠️ LATENT BUG (see README "Known latent bug: upsert can NULL-overwrite"):
+    // Row objects only carry a metric key when a value was found. supabase-js defaults to
+    // defaultToNull:true and PostgREST uses the UNION of keys across the batch, so a recent
+    // still-lagging date that omits e.g. resting_hr_bpm sends NULL and can overwrite a good
+    // value already in the table. Fix is a COALESCE upsert via an upsert_activity() RPC.
+    // Also note: resting HR lags in Google Health by a few days, and this function only runs
+    // when the app is opened (no scheduled job) — re-run it to backfill stale days.
     let upsertError = null
     if (rows.length > 0) {
       const { error } = await supabase
