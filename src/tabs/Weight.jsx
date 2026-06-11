@@ -15,6 +15,7 @@ export function Weight({ entries, latest, delta7, delta30, profile, onAdd, onDel
   const [saved, setSaved] = useState(false)
   const [range, setRange] = useState('1w')
   const [confirmId, setConfirmId] = useState(null)
+  const [showHistory, setShowHistory] = useState(false)
 
   const height = profile?.height_cm
   const bmi = height && latest ? (latest.weight_kg / ((height / 100) ** 2)).toFixed(1) : null
@@ -223,8 +224,20 @@ export function Weight({ entries, latest, delta7, delta30, profile, onAdd, onDel
       {/* History / manage entries */}
       {entries.length > 0 && (
         <div className="card fade-up stagger-4" style={{ padding: '16px', marginTop: 12 }}>
-          <div style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em', marginBottom: 14 }}>HISTORY</div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <button
+            onClick={() => { setShowHistory(v => !v); setConfirmId(null) }}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
+              padding: 0, border: 'none', background: 'transparent', cursor: 'pointer',
+            }}
+          >
+            <span style={{ fontSize: '0.7rem', color: '#9ca0a4', letterSpacing: '0.05em' }}>
+              HISTORY &amp; EDIT <span style={{ color: '#6b6f73' }}>({entries.length})</span>
+            </span>
+            <span style={{ fontSize: '0.75rem', color: '#6b6f73', transform: showHistory ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▾</span>
+          </button>
+          {showHistory && (
+          <div style={{ display: 'flex', flexDirection: 'column', marginTop: 14 }}>
             {[...entries].reverse().map((e, i) => (
               <div
                 key={e.id}
@@ -276,6 +289,7 @@ export function Weight({ entries, latest, delta7, delta30, profile, onAdd, onDel
               </div>
             ))}
           </div>
+          )}
         </div>
       )}
     </div>
