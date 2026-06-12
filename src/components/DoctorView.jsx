@@ -12,6 +12,35 @@ function avg(arr) {
   return arr.length ? Math.round(arr.reduce((s, v) => s + v, 0) / arr.length) : null
 }
 
+function AvgBlock({ label, count, sys, dia, pulse }) {
+  return (
+    <div style={{ padding: '16px 20px 0' }}>
+      <div style={{ fontSize: '0.65rem', color: '#6b6f73', letterSpacing: '0.08em', marginBottom: 10 }}>
+        {label} <span style={{ color: '#4a4e52' }}>· {count} reading{count !== 1 ? 's' : ''}</span>
+      </div>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ flex: 1, background: 'rgba(232,122,138,0.08)', borderRadius: 10, padding: '12px 14px', border: '1px solid rgba(232,122,138,0.15)' }}>
+          <div style={{ fontSize: '0.65rem', color: '#9ca0a4', marginBottom: 4 }}>SYSTOLIC</div>
+          <div className="mono" style={{ fontSize: '1.6rem', color: '#e87a8a', fontWeight: 500, lineHeight: 1 }}>{sys}</div>
+          <div style={{ fontSize: '0.65rem', color: '#6b6f73', marginTop: 2 }}>mmHg</div>
+        </div>
+        <div style={{ flex: 1, background: 'rgba(91,164,230,0.08)', borderRadius: 10, padding: '12px 14px', border: '1px solid rgba(91,164,230,0.15)' }}>
+          <div style={{ fontSize: '0.65rem', color: '#9ca0a4', marginBottom: 4 }}>DIASTOLIC</div>
+          <div className="mono" style={{ fontSize: '1.6rem', color: '#5ba4e6', fontWeight: 500, lineHeight: 1 }}>{dia}</div>
+          <div style={{ fontSize: '0.65rem', color: '#6b6f73', marginTop: 2 }}>mmHg</div>
+        </div>
+        {pulse && (
+          <div style={{ flex: 1, background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '12px 14px', border: '1px solid rgba(255,255,255,0.07)' }}>
+            <div style={{ fontSize: '0.65rem', color: '#9ca0a4', marginBottom: 4 }}>PULSE</div>
+            <div className="mono" style={{ fontSize: '1.6rem', color: '#f0eeea', fontWeight: 500, lineHeight: 1 }}>{pulse}</div>
+            <div style={{ fontSize: '0.65rem', color: '#6b6f73', marginTop: 2 }}>bpm</div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function DoctorView({ entries, onClose }) {
   const sorted = [...entries].sort((a, b) =>
     b.date.localeCompare(a.date) || (b.time || '').localeCompare(a.time || '')
@@ -21,6 +50,11 @@ export function DoctorView({ entries, onClose }) {
   const avgSys = avg(last30.map(e => e.systolic))
   const avgDia = avg(last30.map(e => e.diastolic))
   const avgPulse = avg(last30.filter(e => e.pulse).map(e => e.pulse))
+
+  const last7 = entries.filter(e => e.date >= dayjs().subtract(7, 'day').format('YYYY-MM-DD'))
+  const avgSys7 = avg(last7.map(e => e.systolic))
+  const avgDia7 = avg(last7.map(e => e.diastolic))
+  const avgPulse7 = avg(last7.filter(e => e.pulse).map(e => e.pulse))
 
   return (
     <div style={{
@@ -53,34 +87,18 @@ export function DoctorView({ entries, onClose }) {
         >Close</button>
       </div>
 
+      {/* 7-day averages */}
+      {last7.length > 0 && (
+        <AvgBlock label={`7-DAY AVERAGE`} count={last7.length} sys={avgSys7} dia={avgDia7} pulse={avgPulse7} />
+      )}
+
       {/* 30-day averages */}
       {last30.length > 0 && (
-        <div style={{ padding: '16px 20px' }}>
-          <div style={{ fontSize: '0.65rem', color: '#6b6f73', letterSpacing: '0.08em', marginBottom: 10 }}>30-DAY AVERAGE</div>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <div style={{ flex: 1, background: 'rgba(232,122,138,0.08)', borderRadius: 10, padding: '12px 14px', border: '1px solid rgba(232,122,138,0.15)' }}>
-              <div style={{ fontSize: '0.65rem', color: '#9ca0a4', marginBottom: 4 }}>SYSTOLIC</div>
-              <div className="mono" style={{ fontSize: '1.6rem', color: '#e87a8a', fontWeight: 500, lineHeight: 1 }}>{avgSys}</div>
-              <div style={{ fontSize: '0.65rem', color: '#6b6f73', marginTop: 2 }}>mmHg</div>
-            </div>
-            <div style={{ flex: 1, background: 'rgba(91,164,230,0.08)', borderRadius: 10, padding: '12px 14px', border: '1px solid rgba(91,164,230,0.15)' }}>
-              <div style={{ fontSize: '0.65rem', color: '#9ca0a4', marginBottom: 4 }}>DIASTOLIC</div>
-              <div className="mono" style={{ fontSize: '1.6rem', color: '#5ba4e6', fontWeight: 500, lineHeight: 1 }}>{avgDia}</div>
-              <div style={{ fontSize: '0.65rem', color: '#6b6f73', marginTop: 2 }}>mmHg</div>
-            </div>
-            {avgPulse && (
-              <div style={{ flex: 1, background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '12px 14px', border: '1px solid rgba(255,255,255,0.07)' }}>
-                <div style={{ fontSize: '0.65rem', color: '#9ca0a4', marginBottom: 4 }}>PULSE</div>
-                <div className="mono" style={{ fontSize: '1.6rem', color: '#f0eeea', fontWeight: 500, lineHeight: 1 }}>{avgPulse}</div>
-                <div style={{ fontSize: '0.65rem', color: '#6b6f73', marginTop: 2 }}>bpm</div>
-              </div>
-            )}
-          </div>
-        </div>
+        <AvgBlock label={`30-DAY AVERAGE`} count={last30.length} sys={avgSys} dia={avgDia} pulse={avgPulse} />
       )}
 
       {/* Table */}
-      <div style={{ padding: '0 20px' }}>
+      <div style={{ padding: '16px 20px 0' }}>
         <div style={{ fontSize: '0.65rem', color: '#6b6f73', letterSpacing: '0.08em', marginBottom: 10 }}>ALL READINGS</div>
         <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)' }}>
           {/* Table header */}
