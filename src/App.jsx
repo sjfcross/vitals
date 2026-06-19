@@ -55,7 +55,7 @@ function AppInner() {
   const { profile, loading: profileLoading, save: saveProfile } = useProfile()
   const { meals, addMeal, deleteMeal } = useMeals(date)
   const { activity, save: saveActivity, reload: reloadActivity } = useActivity(date)
-  const { sleep, reload: reloadSleep } = useSleep(date)
+  const { sleep, naps, reload: reloadSleep } = useSleep(date)
 
   async function syncSteps() {
     const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-steps`
@@ -121,7 +121,7 @@ function AppInner() {
         )}
         {tab === 'nutrition' && <Nutrition meals={meals} profile={profile} onDeleteMeal={deleteMeal} />}
         {tab === 'activity' && <Activity activity={activity} profile={profile} date={date} today={today} onSave={saveActivity} onDateChange={setDate} onSync={syncAll} onSyncHr={syncHrIntraday} />}
-        {tab === 'sleep' && <Sleep sleep={sleep} date={date} today={today} onDateChange={setDate} onSync={syncSleep} />}
+        {tab === 'sleep' && <Sleep sleep={sleep} naps={naps} date={date} today={today} onDateChange={setDate} onSync={syncSleep} />}
         {tab === 'weight' && (
           <Weight
             entries={entries} latest={latest} delta7={delta7} delta30={delta30}

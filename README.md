@@ -322,7 +322,9 @@ https://www.googleapis.com/auth/googlehealth.sleep.readonly
 3. Make sure `https://developers.google.com/oauthplayground` is in Authorized redirect URIs in Google Cloud Console → Credentials → OAuth client
 4. Paste all 3 scopes, click "Authorize APIs" → sign in → grant access
 5. Click "Exchange authorization code for tokens" → copy `refresh_token`
-6. Update `GOOGLE_REFRESH_TOKEN` via Supabase Management API or CLI on **all three** functions (`sync-steps`, `sync-extras`, `sync-sleep`)
+6. Update `GOOGLE_REFRESH_TOKEN` — it's a **project-wide** Edge Function secret, so one update covers every function (sync-steps, sync-extras, sync-sleep, sync-hr-intraday, …). No per-function step.
+   - CLI: `supabase secrets set GOOGLE_REFRESH_TOKEN='1//…' --project-ref rkxorbsusqfhlhrlajlj` (needs `SUPABASE_ACCESS_TOKEN` set), or set it in Dashboard → Project Settings → Edge Functions → Secrets.
+   - Verify: POST any sync function; a 500 with `invalid_grant: Token has been expired or revoked` means the refresh token is dead (e.g. revoked, or app left in "Testing" status where Google expires refresh tokens after 7 days).
 
 ### Edge function: `sync-extras`
 

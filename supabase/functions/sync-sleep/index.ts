@@ -83,21 +83,28 @@ Deno.serve(async (req) => {
         }
       })
 
-    // Deduplicate by date — Fitbit sometimes records two sessions for the same night.
-    // Postgres can't ON CONFLICT UPDATE the same row twice in one statement, so keep longest.
-    const byDate = new Map<string, typeof rows[0]>()
+    // Keep every session. Per wake-date, the longest-asleep session is the "night";
+    // any additional same-day sessions are naps (is_nap = true). Rows are upserted on
+    // (date, sleep_start) so naps and nights coexist instead of overwriting each other.
+    const byDate = new Map<string, typeof rows>()
     for (const row of rows) {
-      const existing = byDate.get(row.date)
-      if (!existing || (row.asleep_min ?? 0) > (existing.asleep_min ?? 0)) {
-        byDate.set(row.date, row)
-      }
+      const arr = byDate.get(row.date) ?? []
+      arr.push(row)
+      byDate.set(row.date, arr)
     }
-    const deduped = Array.from(byDate.values())
+    const flagged: Array<typeof rows[0] & { is_nap: boolean }> = []
+    for (const sessions of byDate.values()) {
+      let nightIdx = 0
+      sessions.forEach((s, i) => {
+        if ((s.asleep_min ?? 0) > (sessions[nightIdx].asleep_min ?? 0)) nightIdx = i
+      })
+      sessions.forEach((s, i) => flagged.push({ ...s, is_nap: i !== nightIdx }))
+    }
 
     // Filter to requested date window
     const startMs = new Date(startDate + 'T00:00:00Z').getTime()
     const endMs   = new Date(endDate   + 'T23:59:59Z').getTime()
-    const filtered = deduped.filter(r => {
+    const filtered = flagged.filter(r => {
       const t = new Date(r.sleep_end).getTime()
       return t >= startMs && t <= endMs
     })
@@ -111,7 +118,7 @@ Deno.serve(async (req) => {
     if (filtered.length > 0) {
       const { error } = await supabase
         .from('sleep')
-        .upsert(filtered, { onConflict: 'date' })
+        .upsert(filtered, { onConflict: 'date,sleep_start' })
       upsertError = error
     }
 

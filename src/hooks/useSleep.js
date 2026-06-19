@@ -4,18 +4,26 @@ import dayjs from 'dayjs'
 
 export function useSleep(date) {
   const [sleep, setSleep] = useState(null)
+  const [naps, setNaps] = useState([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from('sleep').select('*').eq('date', date).single()
-    setSleep(data || null)
+    // A day can have a main night plus one or more naps. Fetch them all.
+    const { data } = await supabase.from('sleep').select('*').eq('date', date)
+    const rows = data || []
+    const night = rows.find(r => !r.is_nap) ?? null
+    const napRows = rows
+      .filter(r => r.is_nap)
+      .sort((a, b) => new Date(a.sleep_start) - new Date(b.sleep_start))
+    setSleep(night)
+    setNaps(napRows)
     setLoading(false)
   }, [date])
 
   useEffect(() => { load() }, [load])
 
-  return { sleep, loading, reload: load }
+  return { sleep, naps, loading, reload: load }
 }
 
 export function useWeekSleep(date) {
@@ -26,7 +34,8 @@ export function useWeekSleep(date) {
     const end   = dayjs(date).endOf('week').format('YYYY-MM-DD')
     supabase
       .from('sleep')
-      .select('date, asleep_min, deep_min, rem_min, light_min, awake_min')
+      .select('date, asleep_min, deep_min, rem_min, light_min, awake_min, is_nap')
+      .eq('is_nap', false)
       .gte('date', start)
       .lte('date', end)
       .then(({ data }) => {

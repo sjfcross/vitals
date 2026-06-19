@@ -128,7 +128,7 @@ src/
   lib/
     supabase.js        — Supabase client init
   main.jsx             — app entry
-  App.jsx              — auth gate + tab routing + date state + sync buttons (syncSteps, syncExtras, syncSleep)
+  App.jsx              — auth gate + tab routing + date state + sync buttons (syncSteps, syncExtras, syncSleep, syncHrIntraday)
 ```
 
 ---
@@ -141,7 +141,7 @@ All sync runs as Supabase Edge Functions, triggered manually from the app (butto
 | Function | What it does |
 |---|---|
 | `sync-steps` | Fetches daily step count from Google Health `steps` dailyRollUp → `activity` table |
-| `sync-extras` | Fetches distance, active_minutes, resting_hr_bpm, hrv_rmssd, spo2_pct → `activity` table. ⚠️ Resting HR lags in Google Health by a few days and there's no scheduled job — if the recovery graph shows stale resting HR, just re-run this function to backfill. Also has a latent NULL-overwrite upsert bug. See README "Troubleshooting: resting HR goes stale" + "Known latent bug". |
+| `sync-extras` | Fetches distance, active_minutes, resting_hr_bpm, hrv_rmssd, spo2_pct → `activity` table. Resting HR lags in Google Health by a few days, so the `nightly-sync-extras` pg_cron job (jobid 1) re-runs this nightly at 01:00 UTC to backfill — `select * from cron.job_run_details where jobid=1`. Can also be re-run manually anytime. ⚠️ Has a latent NULL-overwrite upsert bug. See README "Known latent bug". |
 | `sync-sleep` | Fetches sleep sessions from Google Health → `sleep` table |
 | `probe-health` | Debug/exploration function — currently probes HR data shape (see below) |
 
@@ -174,41 +174,27 @@ Deploy command: `npx supabase functions deploy <name> --project-ref rkxorbsusqfh
 
 ---
 
-## HR Intraday Feature — Current State (REDO PLANNED)
+## HR Intraday Feature — FULLY WORKING (as of 2026-06-08)
 
-### What's already built and working
+The redesign described in earlier drafts is **done and shipped** — the section below reflects the live implementation.
 
-**Infrastructure — do not rebuild:**
-- `heart_rate_intraday` table exists with RLS, unique constraint on `(user_id, timestamp)`, index on `(user_id, timestamp DESC)`
+**Infrastructure:**
+- `heart_rate_intraday` table with RLS, unique constraint on `(user_id, timestamp)`, index on `(user_id, timestamp DESC)`
 - `pgrst.db_max_rows = 50000` set on `authenticator` role
 - Grants on table and sequence for `anon`, `authenticated`, `service_role`
-- `get_hr_hourly_chart(since_ts timestamptz)` RPC — returns `(h timestamptz, avg_bpm smallint, max_bpm smallint)` per hour for 24h
-- `sync-hr-intraday` edge function deployed and working — cursor-based incremental sync, 5s bucket downsampling, 48h pruning, page_size=1000
+- `get_hr_3min_chart(since_ts timestamptz)` RPC — 3-min buckets, returns `(h timestamptz, avg_bpm smallint, max_bpm smallint)`. **This is the one the UI uses.** `get_hr_hourly_chart` still exists but is no longer called.
+- `sync-hr-intraday` edge function — cursor-based incremental sync, 5s bucket downsampling, 48h pruning, page_size=1000. Fixed a CPU-limit issue (status 546) by removing a second pass over rawPoints.
 
-**Current UI (to be redesigned):**
-- `src/hooks/useHeartRateIntraday.js` — `useHeartRateIntraday()` hook (hourly RPC) + `fetchHrZoom(centerMs)` (raw 5s query for 3h window)
-- `src/tabs/Activity.jsx` — has a 24-hourly-bar overview + click-to-zoom 5s AreaChart. User says this is not helpful — redo the chart design.
+**UI (live):**
+- `src/hooks/useHeartRateIntraday.js` — `useHeartRateIntraday()` calls `get_hr_3min_chart` + `fetchHrZoom(centerMs)` (raw 5s query for 3h window)
+- `src/tabs/Activity.jsx` — one continuous AreaChart across 24h at 3-min resolution, with 24 alternating hour-wide background bands; click any point/band to zoom into that hour at 5s resolution; back button returns to overview
 - `src/App.jsx` — `syncHrIntraday()` wired as `onSyncHr` prop to Activity
 
-### What needs to be redone
-
-**Agreed design — build this:**
-- One continuous line/area chart across 24h at 3-minute resolution (~480 points, smooth)
-- Behind the line, the X axis is divided into 24 hour-wide background bands alternating between two subtle shades (e.g. `rgba(255,255,255,0.03)` / transparent) — these are the "hour bars"
-- The area fill of the line sits on top of those bands, so the bands visually run from 0 up to the line
-- Each hour band is a clickable hit zone — clicking zooms into that hour (same 5s zoom as before, but triggered by clicking the background band not a separate bar)
-- Hour labels sit below the chart on the band boundaries (every 3h or 6h to avoid crowding)
-- Zoom view: 5s resolution AreaChart for the clicked hour ±1h (3h window), back button to return
-
-**New SQL function needed:** `get_hr_3min_chart(since_ts)` — 3-min buckets instead of hourly, same pattern as `get_hr_hourly_chart`. Add to Supabase before building the UI.
-
-**Hook changes:** `useHeartRateIntraday` should call the new 3-min RPC instead of the hourly one. `fetchHrZoom` stays as-is.
-
 ### Key facts to remember
-- Data: ~11,500 rows, ~16–24h coverage at 5s resolution
+- Data: 48h sliding window in `heart_rate_intraday` (~34,560 rows max at steady state); chart queries last 24h only
 - Edge function timeout: 60s — first sync covers 24h only; subsequent syncs are incremental (fast)
 - `fetchHrZoom(centerMs)` queries `heart_rate_intraday` directly, window = centerMs ±1h/+2h (3h total), returns `{ x: unixMs, bpm: number }[]`
-- `useHeartRateIntraday()` calls `get_hr_hourly_chart` RPC, returns `{ x: unixMs, avg: number, max: number }[]`
+- `useHeartRateIntraday()` calls `get_hr_3min_chart` RPC, returns `{ x: unixMs, avg: number, max: number }[]`
 
 ### Colour palette reminder
 | Token | Value | Usage |

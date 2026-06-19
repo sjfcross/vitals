@@ -127,6 +127,74 @@ function SleepTimeline({ sleep }) {
   )
 }
 
+// Header (total asleep + per-stage minutes) followed by the stage timeline.
+// Reused by the main night card and the nap overlay.
+function SleepDetail({ sleep }) {
+  const asleepMin = sleep?.asleep_min ?? 0
+  const deepMin   = sleep?.deep_min   ?? 0
+  const remMin    = sleep?.rem_min    ?? 0
+  const lightMin  = sleep?.light_min  ?? 0
+  const awakeMin  = sleep?.awake_min  ?? 0
+
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div>
+          <div className="mono" style={{ fontSize: '2rem', fontWeight: 500, color: '#f0eeea', lineHeight: 1 }}>
+            {fmt(asleepMin)}
+          </div>
+          <div style={{ fontSize: '0.72rem', color: '#6b6f73', marginTop: 4 }}>
+            {dayjs(sleep.sleep_start).format('h:mm A')} – {dayjs(sleep.sleep_end).format('h:mm A')}
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', textAlign: 'right' }}>
+          {[['Deep', deepMin, '#3a5fa8'], ['REM', remMin, '#5ba4e6'], ['Light', lightMin, '#b47fdb'], ['Awake', awakeMin, '#e8784a']].map(([label, min, color]) => (
+            <div key={label}>
+              <div className="mono" style={{ fontSize: '0.85rem', color, fontWeight: 500 }}>{fmt(min)}</div>
+              <div style={{ fontSize: '0.6rem', color: '#6b6f73' }}>{label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <SleepTimeline sleep={sleep} />
+    </>
+  )
+}
+
+// Full-screen overlay listing every nap for the currently-open day.
+function NapView({ naps, date, onClose }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 50, background: '#0e0f11',
+      overflowY: 'auto', padding: '16px 16px 40px',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+        <div>
+          <div style={{ fontSize: '1.05rem', color: '#f0eeea', fontWeight: 500 }}>
+            {naps.length === 1 ? 'Nap' : 'Naps'} · {dayjs(date).format('MMM D, YYYY')}
+          </div>
+          <div style={{ fontSize: '0.68rem', color: '#6b6f73', marginTop: 2 }}>
+            {naps.length} daytime session{naps.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+        <button onClick={onClose}
+          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: '0.74rem', color: '#9ca0a4', fontFamily: 'inherit' }}>
+          ✕ Close
+        </button>
+      </div>
+
+      {naps.map((nap, i) => (
+        <div key={nap.id ?? i} className="card-lg" style={{ padding: 20, marginBottom: 12 }}>
+          <div style={{ fontSize: '0.62rem', color: '#e8a04a', letterSpacing: '0.06em', marginBottom: 12 }}>
+            ☀️ NAP {naps.length > 1 ? `${i + 1} OF ${naps.length}` : ''}
+          </div>
+          <SleepDetail sleep={nap} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function TrendChart({ data, field, color, label, unit, decimals = 0 }) {
   const vals = data.map(d => d[field]).filter(v => v != null)
   if (vals.length < 2) return (
@@ -176,15 +244,17 @@ function TrendChart({ data, field, color, label, unit, decimals = 0 }) {
   )
 }
 
-export function Sleep({ sleep, date, today, onDateChange, onSync }) {
+export function Sleep({ sleep, naps = [], date, today, onDateChange, onSync }) {
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState(null)
+  const [showNaps, setShowNaps] = useState(false)
   const dateInputRef = useRef(null)
+  const napTotal = naps.reduce((sum, n) => sum + (n.asleep_min ?? 0), 0)
   const { weekData, reload: reloadWeek } = useWeekSleep(date)
   const { data: recoveryData } = useRecoveryTrends(date)
   const isToday = date === today
 
-  function handleDateChange(newDate) { onDateChange(newDate) }
+  function handleDateChange(newDate) { setShowNaps(false); onDateChange(newDate) }
 
   async function handleSync() {
     setSyncing(true)
@@ -201,12 +271,6 @@ export function Sleep({ sleep, date, today, onDateChange, onSync }) {
       setTimeout(() => setSyncMsg(null), 3000)
     }
   }
-
-  const asleepMin = sleep?.asleep_min ?? 0
-  const deepMin   = sleep?.deep_min   ?? 0
-  const remMin    = sleep?.rem_min    ?? 0
-  const lightMin  = sleep?.light_min  ?? 0
-  const awakeMin  = sleep?.awake_min  ?? 0
 
   const BAR_MAX_H = 72  // px, represents 10h
 
@@ -244,27 +308,23 @@ export function Sleep({ sleep, date, today, onDateChange, onSync }) {
       {sleep ? (<>
         {/* Summary card */}
         <div className="card-lg fade-up stagger-1" style={{ padding: '20px', marginBottom: 12 }}>
-          {/* Header: total + stage totals */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
-            <div>
-              <div className="mono" style={{ fontSize: '2rem', fontWeight: 500, color: '#f0eeea', lineHeight: 1 }}>
-                {fmt(asleepMin)}
-              </div>
-              <div style={{ fontSize: '0.72rem', color: '#6b6f73', marginTop: 4 }}>
-                {dayjs(sleep.sleep_start).format('h:mm A')} – {dayjs(sleep.sleep_end).format('h:mm A')}
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', textAlign: 'right' }}>
-              {[['Deep', deepMin, '#3a5fa8'], ['REM', remMin, '#5ba4e6'], ['Light', lightMin, '#b47fdb'], ['Awake', awakeMin, '#e8784a']].map(([label, min, color]) => (
-                <div key={label}>
-                  <div className="mono" style={{ fontSize: '0.85rem', color, fontWeight: 500 }}>{fmt(min)}</div>
-                  <div style={{ fontSize: '0.6rem', color: '#6b6f73' }}>{label}</div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <SleepDetail sleep={sleep} />
 
-          <SleepTimeline sleep={sleep} />
+          {/* Nap button — opens the nap overlay for this day */}
+          {naps.length > 0 && (
+            <button onClick={() => setShowNaps(true)}
+              style={{
+                width: '100%', marginTop: 16, padding: '11px 14px',
+                background: 'rgba(232,160,74,0.10)', border: '1px solid rgba(232,160,74,0.28)',
+                borderRadius: 10, cursor: 'pointer', color: '#e8a04a', fontFamily: 'inherit',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>
+                ☀️ {naps.length} {naps.length === 1 ? 'nap' : 'naps'} · {fmt(napTotal)}
+              </span>
+              <span style={{ fontSize: '0.9rem', opacity: 0.8 }}>›</span>
+            </button>
+          )}
         </div>
 
         {/* Weekly bar */}
@@ -307,11 +367,20 @@ export function Sleep({ sleep, date, today, onDateChange, onSync }) {
         </div>
       </>) : (
         <div className="card fade-up stagger-1" style={{ padding: 32, textAlign: 'center' }}>
-          <div style={{ fontSize: '0.78rem', color: '#52575c', marginBottom: 16 }}>No sleep data for this date</div>
-          <button onClick={handleSync} disabled={syncing}
-            style={{ background: 'rgba(91,164,230,0.12)', border: '1px solid rgba(91,164,230,0.25)', borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontSize: '0.8rem', color: '#5ba4e6', fontFamily: 'inherit' }}>
-            {syncing ? 'Syncing…' : 'Sync from Fitbit'}
-          </button>
+          <div style={{ fontSize: '0.78rem', color: '#52575c', marginBottom: 16 }}>
+            {naps.length > 0 ? 'No night sleep recorded — naps only' : 'No sleep data for this date'}
+          </div>
+          {naps.length > 0 ? (
+            <button onClick={() => setShowNaps(true)}
+              style={{ background: 'rgba(232,160,74,0.12)', border: '1px solid rgba(232,160,74,0.28)', borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontSize: '0.8rem', color: '#e8a04a', fontFamily: 'inherit' }}>
+              ☀️ View {naps.length} {naps.length === 1 ? 'nap' : 'naps'} · {fmt(napTotal)}
+            </button>
+          ) : (
+            <button onClick={handleSync} disabled={syncing}
+              style={{ background: 'rgba(91,164,230,0.12)', border: '1px solid rgba(91,164,230,0.25)', borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontSize: '0.8rem', color: '#5ba4e6', fontFamily: 'inherit' }}>
+              {syncing ? 'Syncing…' : 'Sync from Fitbit'}
+            </button>
+          )}
         </div>
       )}
 
@@ -335,6 +404,10 @@ export function Sleep({ sleep, date, today, onDateChange, onSync }) {
             })}
           </div>
         </div>
+      )}
+
+      {showNaps && naps.length > 0 && (
+        <NapView naps={naps} date={date} onClose={() => setShowNaps(false)} />
       )}
     </div>
   )
