@@ -142,7 +142,7 @@ All sync runs as Supabase Edge Functions, triggered manually from the app (butto
 |---|---|
 | `sync-steps` | Fetches daily step count from Google Health `steps` dailyRollUp → `activity` table |
 | `sync-extras` | Fetches distance, active_minutes, resting_hr_bpm, hrv_rmssd, spo2_pct → `activity` table. Resting HR lags in Google Health by a few days, so the `nightly-sync-extras` pg_cron job (jobid 1) re-runs this nightly at 01:00 UTC to backfill — `select * from cron.job_run_details where jobid=1`. Can also be re-run manually anytime. ⚠️ Has a latent NULL-overwrite upsert bug. See README "Known latent bug". |
-| `sync-sleep` | Fetches sleep sessions from Google Health → `sleep` table |
+| `sync-sleep` | Fetches sleep sessions from Google Health → `sleep` table. Keeps every session per day: longest = night (`is_nap=false`), the rest = naps (`is_nap=true`). Upserts on `(date, sleep_start)`. |
 | `probe-health` | Debug/exploration function — currently probes HR data shape (see below) |
 
 Deploy command: `npx supabase functions deploy <name> --project-ref rkxorbsusqfhlhrlajlj --no-verify-jwt`

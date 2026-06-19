@@ -449,7 +449,8 @@ Key gotchas:
 - `startUtcOffset` is a string like `"3600s"` — strip the `s` and parse as seconds to compute local time
 - Sleep sessions span two calendar days; we use the **wake-up date** (local time) as the record's `date`
 - Stage types: `AWAKE`, `LIGHT`, `DEEP`, `REM` (all caps)
-- **Fitbit duplicate sessions:** Fitbit sometimes records two overlapping sleep sessions for the same night (e.g. one "main" session and one short fragment). Both map to the same wake-up date. If both are sent in a single `upsert()` call, Postgres throws `ON CONFLICT DO UPDATE command cannot affect row a second time` (code `21000`) and the **entire batch fails silently** — `upsertError` is not null but the rows array still looks populated, so you won't notice unless you check the DB. Fix: deduplicate rows by date before upserting, keeping the session with the highest `asleep_min`. Do **not** use a POST body to pass a date range to the sleep endpoint — POST is treated as `CreateDataPoint` (write operation) and returns 403 `ACCESS_TOKEN_SCOPE_INSUFFICIENT` because the refresh token is read-only.
+- **Multiple sessions per day (naps):** a single wake-up date can legitimately have more than one session — a night plus one or more daytime naps. We keep them all. The conflict target is `(date, sleep_start)` (not `date`), and within each wake-date the longest-`asleep_min` session is flagged as the night (`is_nap = false`) while the rest are naps (`is_nap = true`). Because each row has a distinct `sleep_start`, a single `upsert()` never hits `ON CONFLICT DO UPDATE command cannot affect row a second time` (code `21000`). ⚠️ *History:* before 2026-06-19 this was a dedup-by-date that kept only the highest `asleep_min` and silently discarded every nap — Google had them all along. If you ever see only one session per day again, check that the `(date, sleep_start)` unique constraint still exists.
+- Do **not** use a POST body to pass a date range to the sleep endpoint — POST is treated as `CreateDataPoint` (write operation) and returns 403 `ACCESS_TOKEN_SCOPE_INSUFFICIENT` because the refresh token is read-only.
 
 ### Date assignment
 
@@ -466,7 +467,7 @@ const date      = wakeLocal.toISOString().split('T')[0]   // "YYYY-MM-DD" local 
 create table public.sleep (
   id           uuid primary key default gen_random_uuid(),
   created_at   timestamptz default now(),
-  date         date not null unique,   -- wake-up date (local)
+  date         date not null,          -- wake-up date (local)
   sleep_start  timestamptz not null,
   sleep_end    timestamptz not null,
   duration_min int,                    -- total time in bed
@@ -475,9 +476,13 @@ create table public.sleep (
   rem_min      int,
   light_min    int,
   awake_min    int,
-  stages       jsonb                   -- [{startTime, endTime, type}]
+  stages       jsonb,                  -- [{startTime, endTime, type}]
+  is_nap       boolean not null default false,  -- false = main night, true = daytime nap
+  constraint sleep_date_start_key unique (date, sleep_start)  -- multiple sessions/day coexist
 );
 ```
+
+> Migration `sleep_allow_naps_per_day` (2026-06-19) added `is_nap` and replaced the old `unique(date)` with `unique(date, sleep_start)`.
 
 RLS policy: `auth.uid() is not null` (any authenticated user). Both `authenticated` and `service_role` need SELECT/INSERT/UPDATE grants — run:
 ```sql
@@ -497,14 +502,15 @@ Default: syncs last 30 days. Accepts optional `{ startDate, endDate }` body. Ret
 Pipeline:
 1. GET all sleep data points (no date filter — API returns everything)
 2. Map each data point to a row, assigning `date` from the local wake-up time
-3. **Deduplicate by date** (keep longest `asleep_min`) — Fitbit can emit two sessions per night
+3. **Group by wake-date and flag sessions** — within each date the longest `asleep_min` becomes the night (`is_nap = false`), all others become naps (`is_nap = true`). Nothing is discarded.
 4. Filter to the requested date window using `sleep_end`
-5. Upsert with `onConflict: 'date'`
+5. Upsert with `onConflict: 'date,sleep_start'`
 
 ### Sleep tab UI (Sleep.jsx)
 
-- **Stage timeline**: custom SVG — Y axis labels baked in as `<text>` elements, stage blocks as `<rect>`, thin vertical connector lines between stage transitions (Samsung Health style)
-- **Weekly bar**: bars scale to 10h max; duration text rendered inside each bar
+- **Stage timeline**: custom SVG — Y axis labels baked in as `<text>` elements, stage blocks as `<rect>`, thin vertical connector lines between stage transitions (Samsung Health style). Extracted into a reusable `SleepDetail` component (header + timeline) so the nap overlay can reuse it.
+- **Weekly bar**: bars scale to 10h max; duration text rendered inside each bar. Counts nights only (`useWeekSleep` filters `is_nap = false`).
+- **Naps**: `useSleep(date)` returns `{ sleep, naps }` — the night row plus a sorted array of nap rows for that day. A `☀️ N naps · <total>` button under the night graph opens `NapView`, a full-screen overlay rendering each nap with the same `SleepDetail` timeline, tied to the open day. Days with only naps (no night) show a view-naps button in the empty state.
 - **Stage colours**: Deep `#3a5fa8`, REM `#5ba4e6`, Light `#b47fdb`, Awake `#e8784a`
 
 ### Recovery trends section (Sleep tab)
@@ -523,6 +529,8 @@ Below the weekly sleep bar, a **RECOVERY — 30 DAYS** card shows SVG line chart
 ---
 
 ## Google Health API integration — intraday heart rate (planned)
+
+> ✅ **SHIPPED 2026-06-08 — this section is historical.** The intraday HR feature is live; see HANDOFF.md "HR Intraday Feature — FULLY WORKING" for the as-built implementation (`sync-hr-intraday`, `get_hr_3min_chart`, Activity.jsx 24h chart). The build plan below is kept for context only.
 
 ### What's confirmed
 
