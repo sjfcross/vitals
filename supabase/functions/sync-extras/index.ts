@@ -106,8 +106,10 @@ Deno.serve(async (req) => {
 
     const accessToken = await getAccessToken()
 
-    // active-minutes is capped at 14 days by the API
-    const amStartDate = (() => {
+    // active-minutes AND heart-rate daily rollups are capped at 14 days by the API.
+    // Requesting a wider window returns no rollupDataPoints (ok but empty), which silently
+    // dropped resting HR for every day. Verified empirically 2026-06-19: 14d works, 30d → 0 rows.
+    const cap14StartDate = (() => {
       const d = new Date(endDate)
       d.setDate(d.getDate() - 13)
       const s = new Date(startDate)
@@ -116,8 +118,8 @@ Deno.serve(async (req) => {
 
     const [distResult, amResult, hrResult, hrvResult, spo2Result] = await Promise.all([
       fetchDailyRollup(accessToken, 'distance', startDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
-      fetchDailyRollup(accessToken, 'active-minutes', amStartDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
-      fetchDailyRollup(accessToken, 'heart-rate', startDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
+      fetchDailyRollup(accessToken, 'active-minutes', cap14StartDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
+      fetchDailyRollup(accessToken, 'heart-rate', cap14StartDate, endDate).catch(e => ({ ok: false, status: 0, data: { error: e.message } })),
       fetchListAll(accessToken, 'heart-rate-variability').catch(() => ({ ok: false, dataPoints: [] })),
       fetchListAll(accessToken, 'oxygen-saturation').catch(() => ({ ok: false, dataPoints: [] })),
     ])
