@@ -126,6 +126,17 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
 
   const steps = activity?.steps || 0
   const target = profile?.target_steps || 10000
+
+  // Distance display. Google's `distance` rollup lags its `steps` rollup intraday, so the
+  // stored km can be a stale partial (e.g. 1.3 km recorded against 11k steps). Prefer the
+  // measured km, but if it's implausibly low for the step count (< 60% of a ~0.75 m/step
+  // estimate), fall back to the estimate and flag it as approximate.
+  const STRIDE_KM = 0.00075
+  const estKm = steps * STRIDE_KM
+  const measuredKm = activity?.km != null ? Number(activity.km) : null
+  const kmIsStale = measuredKm != null && steps > 0 && measuredKm < estKm * 0.6
+  const useEstimate = measuredKm == null || kmIsStale
+  const displayKm = useEstimate ? estKm : measuredKm
   const hasHrData = chartData.length > 0
 
   function set(field) {
@@ -244,7 +255,7 @@ export function Activity({ activity, profile, date, today, onSave, onDateChange,
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
             <div className="mono" style={{ fontSize: '1rem', color: '#b47fdb' }}>
-              {activity?.km ? `${activity.km} km` : `${(steps * 0.00075).toFixed(2)} km`}
+              {`${useEstimate ? '≈ ' : ''}${displayKm.toFixed(2)} km`}
             </div>
             <div style={{ fontSize: '0.8rem', color: '#9ca0a4' }}>
               {activity?.active_minutes ? `${activity.active_minutes} active min` : '—'}
