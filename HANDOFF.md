@@ -147,6 +147,8 @@ All sync runs as Supabase Edge Functions, triggered manually from the app (butto
 
 Deploy command: `npx supabase functions deploy <name> --project-ref rkxorbsusqfhlhrlajlj --no-verify-jwt`
 
+⚠️ **`--no-verify-jwt` is not optional.** The app calls these with no `Authorization`/`apikey` header, so `verify_jwt: true` → 401 → "Sync failed" in the tab. The **Supabase MCP `deploy_edge_function` tool defaults `verify_jwt: true`** — always pass `verify_jwt: false` when redeploying via MCP. A keyed `curl` test masks the bug (it passes JWT check); reproduce with no auth header. Distinct from the Google `invalid_grant` token expiry. See README "All sync functions MUST be deployed with verify_jwt: false".
+
 ### Confirmed Google Health HR data (probed 2026-06-07)
 
 **Daily rollup (`heart-rate` dailyRollUp):**

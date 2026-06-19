@@ -310,16 +310,18 @@ export function Sleep({ sleep, naps = [], date, today, onDateChange, onSync }) {
         <div className="card-lg fade-up stagger-1" style={{ padding: '20px', marginBottom: 12 }}>
           <SleepDetail sleep={sleep} />
 
-          {/* Nap button — opens the nap overlay for this day */}
+          {/* Nap button — opens the nap overlay for this day.
+              marginTop clears the timeline's overflowing x-axis labels; width ≈ 1/3 of the graph. */}
           {naps.length > 0 && (
             <button onClick={() => setShowNaps(true)}
               style={{
-                width: '100%', marginTop: 16, padding: '11px 14px',
+                width: '33%', marginTop: 34, padding: '9px 12px',
                 background: 'rgba(232,160,74,0.10)', border: '1px solid rgba(232,160,74,0.28)',
                 borderRadius: 10, cursor: 'pointer', color: '#e8a04a', fontFamily: 'inherit',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                whiteSpace: 'nowrap',
               }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 500 }}>
                 ☀️ {naps.length} {naps.length === 1 ? 'nap' : 'naps'} · {fmt(napTotal)}
               </span>
               <span style={{ fontSize: '0.9rem', opacity: 0.8 }}>›</span>

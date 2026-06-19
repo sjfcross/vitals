@@ -260,8 +260,19 @@ Where `rows` is `[{ date: 'YYYY-MM-DD', steps: 8432 }, ...]`.
 
 The source lives at `supabase/functions/sync-steps/index.ts` (deploy via Supabase CLI or paste into Dashboard editor):
 ```bash
-supabase functions deploy sync-steps --project-ref rkxorbsusqfhlhrlajlj
+supabase functions deploy sync-steps --project-ref rkxorbsusqfhlhrlajlj --no-verify-jwt
 ```
+
+### ⚠️ All sync functions MUST be deployed with `verify_jwt: false`
+
+The app calls every edge function with a raw `fetch` that sends **only `Content-Type` — no `Authorization` / `apikey` header** (see `App.jsx` → `syncSteps`, `syncExtras`, `syncSleep`, `syncHrIntraday`). If a function is deployed with JWT verification **on**, that call returns **401** and the tab shows **"Sync failed"** (for the Move tab, `syncAll` runs steps+extras via `Promise.all`, so a single 401 fails the whole sync even if the other succeeded).
+
+- **CLI:** always pass `--no-verify-jwt`.
+- **Supabase MCP `deploy_edge_function` tool:** it **defaults `verify_jwt` to `true`** — you must explicitly pass `verify_jwt: false` every time, or you silently re-break sync.
+- **Debugging trap:** a `curl`/test call that includes the anon key as a Bearer token will *pass* JWT verification and look healthy, masking the bug. Reproduce the failure by calling with **no auth header at all**, exactly like the app does.
+- This 401 is **distinct** from the weekly Google-token expiry (`invalid_grant`, see OAuth section) — a 401 means the function rejected the request before any Google call; `invalid_grant` means the function ran but the refresh token is dead.
+
+*(History: on 2026-06-19 both `sync-extras` and `sync-sleep` got silently flipped to `verify_jwt: true` by MCP redeploys, breaking the Move and Sleep tabs until redeployed with `verify_jwt: false`.)*
 
 ---
 
@@ -291,6 +302,15 @@ The code auto-detects the key by iterating `Object.keys(dp)` and skipping `dataS
 ### active-minutes 14-day cap
 
 The API rejects requests where `window_size_days × days_in_range > 14`. `sync-extras` automatically clamps `startDate` to 13 days before `endDate` for the `active-minutes` fetch. Distance has no such limit.
+
+### Move tab — distance display guard (intraday km lag)
+
+Google's `distance` daily-rollup updates **less frequently than its `steps` rollup during the day**, so the stored `km` can be a stale partial against a fresh step count (observed 2026-06-19: `km = 1.34` recorded against `steps = 11,667`, i.e. 0.12 m/step vs a normal ~0.77). Even a simultaneous `syncAll` can return fresh steps + stale distance, because the lag is on Google's side. Re-running `sync-extras` later settles it.
+
+To avoid showing a wrong measured value, `Activity.jsx` guards the display ([the km line](src/tabs/Activity.jsx)):
+- Prefer the measured `activity.km`.
+- But if it's implausibly low for the step count — `measuredKm < steps × 0.00075 × 0.6` — fall back to the step-based estimate (`steps × 0.00075` km) and prefix **`≈`** to mark it approximate.
+- Settled past days (ratio ~1.0) always show their exact measured km; only a lagging current day shows `≈ <estimate>`, which snaps to the real number once distance catches up or you re-sync.
 
 ### What's NOT available from Fitbit Inspire 3
 
