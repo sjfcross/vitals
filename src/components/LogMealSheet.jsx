@@ -20,23 +20,24 @@ function parsePaste(text) {
     }
     return ''
   }
+  const blank = (v) => (v === '' || Number.isNaN(v)) ? '' : v
   const description = text.match(/^description[:\s]+(.+)$/im)?.[1]?.trim() ?? ''
   return {
     description,
-    calories: get([/calories?[:\s]+(\d+)/i]) || '',
-    protein_g: get([/protein[:\s]+([\d.]+)/i]) || '',
-    fat_g: get([/fat[:\s]+([\d.]+)/i, /total fat[:\s]+([\d.]+)/i]) || '',
-    fat_saturated_g: get([/saturated[:\s]+([\d.]+)/i, /sat\.?\s*fat[:\s]+([\d.]+)/i]) || '',
-    carbs_g: get([/carbs?[:\s]+([\d.]+)/i, /carbohydrates?[:\s]+([\d.]+)/i]) || '',
-    sugar_g: get([/^sugar[:\s]+([\d.]+)/im]) || '',
-    sugar_added_g: get([/added sugar[:\s~]+([\d.]+)/i]) || '',
-    fiber_g: get([/fi[b]?re[:\s]+([\d.]+)/i, /fiber[:\s]+([\d.]+)/i]) || '',
-    sodium_mg: get([/sodium[:\s]+([\d.]+)/i]) || '',
-    calcium_mg: get([/calcium[:\s]+([\d.]+)/i]) || '',
-    iron_mg: get([/iron[:\s]+([\d.]+)/i]) || '',
-    potassium_mg: get([/potassium[:\s]+([\d.]+)/i]) || '',
-    vitamin_c_mg: get([/vitamin\s*c[:\s]+([\d.]+)/i]) || '',
-    vitamin_d_ug: get([/vitamin\s*d[:\s]+([\d.]+)/i]) || '',
+    calories: blank(get([/calories?[:\s~<>≈]+(\d+)/i])),
+    protein_g: blank(get([/protein[:\s~<>≈]+([\d.]+)/i])),
+    fat_g: blank(get([/fat[:\s~<>≈]+([\d.]+)/i, /total fat[:\s~<>≈]+([\d.]+)/i])),
+    fat_saturated_g: blank(get([/saturated[:\s~<>≈]+([\d.]+)/i, /sat\.?\s*fat[:\s~<>≈]+([\d.]+)/i])),
+    carbs_g: blank(get([/carbs?[:\s~<>≈]+([\d.]+)/i, /carbohydrates?[:\s~<>≈]+([\d.]+)/i])),
+    sugar_g: blank(get([/^sugar[:\s~<>≈]+([\d.]+)/im])),
+    sugar_added_g: blank(get([/added sugar[:\s~<>≈]+([\d.]+)/i])),
+    fiber_g: blank(get([/fi[b]?re[:\s~<>≈]+([\d.]+)/i, /fiber[:\s~<>≈]+([\d.]+)/i])),
+    sodium_mg: blank(get([/sodium[:\s~<>≈]+([\d.]+)/i])),
+    calcium_mg: blank(get([/calcium[:\s~<>≈]+([\d.]+)/i])),
+    iron_mg: blank(get([/iron[:\s~<>≈]+([\d.]+)/i])),
+    potassium_mg: blank(get([/potassium[:\s~<>≈]+([\d.]+)/i])),
+    vitamin_c_mg: blank(get([/vitamin\s*c[:\s~<>≈]+([\d.]+)/i])),
+    vitamin_d_ug: blank(get([/vitamin\s*d[:\s~<>≈]+([\d.]+)/i])),
   }
 }
 
