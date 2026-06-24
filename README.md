@@ -93,7 +93,7 @@ Each domain hook (`useMeals`, `useActivity`, etc.) owns its own Supabase fetches
 
 **Y axis auto-fits for weight** — Weight chart domain is computed from the actual data in the selected range, padded 30% and rounded to nearest 5 kg. BP chart uses fixed medical range (60–220 mmHg).
 
-**Paste-to-log meals** — `parsePaste` in `LogMealSheet` regex-extracts nutrition fields from Claude's text output. Triggers automatically when paste exceeds 20 characters. No API call — purely client-side regex.
+**Paste-to-log meals** — `parsePaste` in `LogMealSheet` regex-extracts nutrition fields from Claude's text output. Triggers automatically when paste exceeds 20 characters. No API call — purely client-side regex. Tolerant of approximation prefixes (`~`/`<`/`>`/`≈`) and trailing units on every field, and preserves literal `0` values (see `PASTE_FORMAT.md`).
 
 **BP input auto-advance** — In the BP log form (`BloodPressure.jsx`), the systolic field auto-focuses diastolic after 3 digits, and diastolic auto-focuses pulse after 2 digits. Implemented via `useRef` + `onChange` length check.
 

@@ -19,7 +19,7 @@ React 19 + Vite + Supabase (auth + DB) — deployed via GitHub Actions to GitHub
 
 ## Meal logging
 
-Two modes: **Paste from Claude** (paste Claude's nutrition analysis, fields auto-fill) or **manual entry**. Uses a Claude Project with a system prompt that outputs a fixed parseable format.
+Two modes: **Paste from Claude** (paste Claude's nutrition analysis, fields auto-fill) or **manual entry**. Uses a Claude Project with a system prompt that outputs a fixed parseable format. The parser tolerates approximation prefixes (`~`/`<`/`>`/`≈`) and trailing units on every field and preserves literal `0` values — see `PASTE_FORMAT.md` for the contract.
 
 Parser extracts: calories, protein, fat, sat. fat, carbs, sugar, added sugar, fibre, sodium, calcium, iron, potassium, vitamin C, vitamin D.
 

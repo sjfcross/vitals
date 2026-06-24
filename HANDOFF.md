@@ -99,6 +99,8 @@ Sodium: [number]mg
 
 `Description:` goes first — the parser uses a multiline anchored regex and hits it before any nutrient lines.
 
+The parser is lenient about formatting: approximation prefixes (`~`, `<`, `>`, `≈`) and trailing units (`g`/`mg`/`µg`/`kcal`) are tolerated on every nutrient line and stripped during parse, and a literal `0` is kept rather than treated as missing. See `PASTE_FORMAT.md` for the full contract.
+
 ---
 
 ## Key Files
@@ -232,7 +234,13 @@ Standard form with a DESCRIPTION field at the top (optional, maxLength 120), MEA
 ```js
 const description = text.match(/^description[:\s]+(.+)$/im)?.[1]?.trim() ?? ''
 // all nutrients use case-insensitive float/int extraction
+// separator is [:\s~<>≈]+ so ~ / < / > / ≈ prefixes are absorbed
+// blank() preserves a literal 0 (old `|| ''` wiped zeros)
 ```
+
+> **2026-06-24 fix:** previously the separator was `[:\s]+`, so `~`-prefixed
+> values (e.g. `Protein: ~4.4g`) silently failed and only `Calories` parsed.
+> Widened the separator on every field and added `blank()` to keep `0` values.
 
 ---
 
