@@ -173,7 +173,7 @@ client_id=...&client_secret=...&refresh_token=...&grant_type=refresh_token
 ```
 Returns `{ access_token, expires_in, token_type }`. The access token is valid for ~1 hour.
 
-**To get the initial refresh token:** use [Google OAuth Playground](https://developers.google.com/oauthplayground) with scope `https://www.googleapis.com/auth/health.activity.read` and check "Use your own OAuth credentials".
+**To get the initial refresh token:** see the "OAuth — full scope list" section below for the regeneration procedure. The app is in **Production** publishing status (moved 2026-06-30) — the 7-day Testing-mode token expiry no longer applies.
 
 ### Google Health API v4 — steps daily rollup
 
@@ -337,14 +337,17 @@ https://www.googleapis.com/auth/googlehealth.sleep.readonly
 ```
 
 **To re-generate the refresh token:**
+
+> **Publishing status: In production** (moved from Testing 2026-06-30). Tokens no longer expire after 7 days. You'll see an "unverified app" warning during the consent step — this is expected; click **Advanced → Go to [app name] (unsafe)** to proceed. Only needs re-doing if explicitly revoked or unused for 6 months.
+
 1. Go to [Google OAuth Playground](https://developers.google.com/oauthplayground)
 2. Gear icon → "Use your own OAuth credentials" → enter Client ID + Secret
 3. Make sure `https://developers.google.com/oauthplayground` is in Authorized redirect URIs in Google Cloud Console → Credentials → OAuth client
-4. Paste all 3 scopes, click "Authorize APIs" → sign in → grant access
+4. Paste all 3 scopes, click "Authorize APIs" → sign in → on the warning screen click **Advanced → Go to [app] (unsafe)** → Allow
 5. Click "Exchange authorization code for tokens" → copy `refresh_token`
 6. Update `GOOGLE_REFRESH_TOKEN` — it's a **project-wide** Edge Function secret, so one update covers every function (sync-steps, sync-extras, sync-sleep, sync-hr-intraday, …). No per-function step.
    - CLI: `supabase secrets set GOOGLE_REFRESH_TOKEN='1//…' --project-ref rkxorbsusqfhlhrlajlj` (needs `SUPABASE_ACCESS_TOKEN` set), or set it in Dashboard → Project Settings → Edge Functions → Secrets.
-   - Verify: POST any sync function; a 500 with `invalid_grant: Token has been expired or revoked` means the refresh token is dead (e.g. revoked, or app left in "Testing" status where Google expires refresh tokens after 7 days).
+   - Verify: POST any sync function; a 500 with `invalid_grant: Token has been expired or revoked` means the refresh token is dead (revoked, or unused >6 months).
 
 ### Edge function: `sync-extras`
 
