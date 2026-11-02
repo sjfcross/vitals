@@ -1,6 +1,6 @@
 # VITALS
 
-Personal health tracker PWA. Tracks nutrition, activity, sleep, weight, and blood pressure. Mobile-first dark UI, lives at `/vitals/` on GitHub Pages.
+Personal health tracker PWA. Tracks nutrition, activity, sleep, weight, blood pressure, and gym training. Mobile-first dark UI, lives at `/vitals/` on GitHub Pages.
 
 ---
 
@@ -28,6 +28,7 @@ src/
 
   lib/
     supabase.js         — supabase client (reads VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY)
+    gym*.js             — Gym tab: data layer (Supabase + mock), hooks, pure logic, exercise library (see "Gym tab")
 
   hooks/
     useProfile.js       — user_profile row (height, calorie/sodium/protein/steps targets)
@@ -44,6 +45,7 @@ src/
     Sleep.jsx           — sleep duration + stage timeline chart, weekly sleep bars, Fitbit sync
     Weight.jsx          — current weight, BMI, 7/30-day delta cards, trend chart, log form
     BloodPressure.jsx   — latest reading, trend chart, log form, doctor view
+    Gym*.jsx            — Gym tab: Today / Library / Routines / History (see "Gym tab")
 
   components/
     Layout.jsx          — sticky header, tab bar, safe-area insets
@@ -52,6 +54,10 @@ src/
     LogMealSheet.jsx    — paste-from-Claude or manual meal entry sheet
     CircularRing.jsx    — SVG progress ring (used for cal/sodium/protein on Overview)
     DoctorView.jsx      — full-screen BP log table with 30-day averages
+    gym/                — Gym tab components (session, routine editor, library browser, charts, …)
+
+  data/
+    free-exercise-db.json — bundled exercise metadata (public domain, pinned commit; see FREE_EXERCISE_DB.md)
 ```
 
 ---
@@ -68,6 +74,7 @@ All tables have Row Level Security — users can only see their own rows.
 | `sleep` | `date` (wake-up date), `sleep_start`, `sleep_end`, `duration_min`, `asleep_min`, `deep_min`, `rem_min`, `light_min`, `awake_min`, `stages` (JSONB) |
 | `weight` | `date`, `time`, `weight_kg` |
 | `blood_pressure` | `date`, `time`, `systolic`, `diastolic`, `pulse`, `notes` |
+| `gym_*` | Gym tab — 6 tables, see "Gym tab" below and `supabase/migrations/20261102120000_gym.sql` |
 
 ---
 
@@ -599,6 +606,41 @@ No minute-tier needed. Once raw rows age past 48h, compute daily min/max/avg →
 
 ---
 
+## Gym tab
+
+Exercise library, routines, guided sessions and progress — scoped in `GYM_PLAN.md` (v1).
+
+**Files:** `src/tabs/Gym*.jsx` (Today / Library / Routines / History), `src/components/gym/` (session view, routine editor, library browser, exercise detail, charts), `src/lib/gym*.js`:
+
+| File | Role |
+|---|---|
+| `gymApi.js` | Data layer. Same `{ data, error }` interface for **Supabase** and an in-memory **mock** |
+| `gymHooks.js` | `useGym()` — loads library + data, exposes mutators; `useNow`, `useRecovery` |
+| `gymLogic.js` | Pure logic: progression hints, e1RM (Epley, ≤ 12 reps), PR detection, HR summary, today's routine |
+| `gymLibrary.js` | Lazy-loads the bundled exercise JSON, merges custom exercises, search, swap alternatives |
+| `gymMock.js` | Deterministic demo data + synthetic HR for mock mode |
+
+**Mock mode** turns on automatically when `VITE_SUPABASE_URL` is missing (or with `VITE_GYM_MOCK=1`), and shows a "DEMO DATA" banner. Data lives in memory and `localStorage` (`vitals-gym-mock-v1`); "Reset demo data" is in the ⚙ sheet. To preview without logging in: `npm run dev` → `http://localhost:5173/vitals/gym-preview.html` (dev-only page, forces mock mode, not part of the build).
+
+**Database — apply the migration once** (it is not applied automatically):
+```bash
+supabase db push --project-ref rkxorbsusqfhlhrlajlj
+# or paste supabase/migrations/20261102120000_gym.sql into Dashboard → SQL editor and run it
+```
+Tables: `gym_settings` (HRmax, default rest/increment), `gym_custom_exercises`, `gym_routines` (+ `gym_routine_exercises`), `gym_sessions` (start/end + HR summary columns), `gym_sets`. All have RLS `auth.uid() = user_id`, `user_id DEFAULT auth.uid()` and GRANTs to `authenticated`; child tables use composite FKs `(parent_id, user_id)`. If the tab says **"GYM TABLES NOT FOUND"**, the migration hasn't been applied.
+
+**Exercise references** are text keys: a free-exercise-db id (`Leg_Press`) or `custom:<uuid>`. Custom exercises are archived, never hard-deleted, so old logs keep their name.
+
+**Exercise library:** [free-exercise-db](https://github.com/yuhonas/free-exercise-db) (Unlicense / public domain), 876 exercises, metadata bundled as a lazy chunk (~160 KB gzipped), images loaded on demand from jsDelivr pinned to the same commit, falling back to raw GitHub, then to a self-drawn SVG stick figure. Bump the pin with `node scripts/update-exercise-db.mjs <sha>` + `FREE_EXERCISE_DB_COMMIT` in `gymLibrary.js`.
+
+**Progression:** per routine exercise — *double* (rep range: all target sets at `rep_max` → +increment, back to `rep_min`) or *linear* (fixed reps: all hit → +increment; 3 stalled sessions → deload 10 %). Shown as a hint with an "Apply" button; sets are pre-filled with last session's weights.
+
+**HR summary:** at "Finish", the app calls `sync-hr-intraday`, reads `heart_rate_intraday` for `[started_at, ended_at]`, and stores avg/max + minutes in 5 zones (% of HRmax from ⚙ settings) on the session row. Raw HR is kept only 48 h, so sessions older than that keep an empty summary; within 48 h the summary can be recomputed ("↻ Sync & compute") if the Fitbit app hadn't synced yet.
+
+**Swap:** alternatives share the planned exercise's primary muscles; same-equipment, custom ("my gym") and previously-done exercises rank higher. The set is stored with `swapped_from_exercise_id`. Ad-hoc extras are stored with `is_adhoc = true`.
+
+---
+
 ## Color palette
 
 | Metric | Color |
@@ -620,3 +662,5 @@ No minute-tier needed. Once raw rows age past 48h, compute daily min/max/avg →
 | Sleep — REM | `#5ba4e6` |
 | Sleep — Light | `#b47fdb` |
 | Sleep — Awake | `#e8784a` |
+| Gym (accent) | `#5ecfcf` (= `--fibre`) |
+| Gym — PR | `#f0c96a` |
