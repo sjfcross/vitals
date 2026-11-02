@@ -283,6 +283,16 @@ Uses `select('*')` — any new column added to the DB automatically comes back i
 
 ---
 
+## Gym tab (v1, 2026-11-02)
+
+Built per `GYM_PLAN.md`; details in README → "Gym tab". Key facts:
+- **Migration must be applied by hand** before the tab works on the live site: `supabase/migrations/20261102120000_gym.sql` (otherwise the tab shows "GYM TABLES NOT FOUND").
+- Without Supabase env vars the tab runs on **mock data** (`src/lib/gymApi.js` → `GYM_MOCK`). `gym-preview.html` is a dev-only page that renders the tab in mock mode without login.
+- Exercise library = free-exercise-db (public domain), pinned commit in `src/lib/gymLibrary.js` + `src/data/FREE_EXERCISE_DB.md`.
+- Shared files touched: `App.jsx` (import + one render line passing `today`, weight `entries`, `syncHrIntraday`) and `Layout.jsx` (one tab entry).
+
+---
+
 ## What You Don't Touch
 
 - `Login.jsx`, `OnboardingSheet.jsx`

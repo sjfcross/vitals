@@ -10,6 +10,7 @@ import { Activity } from './tabs/Activity'
 import { Weight } from './tabs/Weight'
 import { BloodPressure } from './tabs/BloodPressure'
 import { Sleep } from './tabs/Sleep'
+import { Gym } from './tabs/Gym'
 import { useProfile } from './hooks/useProfile'
 import { useMeals } from './hooks/useMeals'
 import { useActivity } from './hooks/useActivity'
@@ -121,6 +122,7 @@ function AppInner() {
         )}
         {tab === 'nutrition' && <Nutrition meals={meals} profile={profile} onDeleteMeal={deleteMeal} />}
         {tab === 'activity' && <Activity activity={activity} profile={profile} date={date} today={today} onSave={saveActivity} onDateChange={setDate} onSync={syncAll} onSyncHr={syncHrIntraday} />}
+        {tab === 'gym' && <Gym today={today} weightEntries={entries} onSyncHr={syncHrIntraday} />}
         {tab === 'sleep' && <Sleep sleep={sleep} naps={naps} date={date} today={today} onDateChange={setDate} onSync={syncSleep} />}
         {tab === 'weight' && (
           <Weight

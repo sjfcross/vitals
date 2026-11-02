@@ -1,7 +1,7 @@
-# Gym tab — plan (not started)
+# Gym tab — plan
 
-Notes from 2026-10-10, refined 2026-11-02. Nothing here is built yet.
-Before building: read `README.md` and `HANDOFF.md`, then build v1 as scoped below.
+Notes from 2026-10-10, refined 2026-11-02. **Status: v1 built (2026-11-02)** — see README → "Gym tab". The DB migration still has to be applied by hand; the "later" rows below are not built.
+Before changing it: read `README.md` and `HANDOFF.md`.
 
 ## Decision: build it inside VITALS, use openGym for ideas only
 

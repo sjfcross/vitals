@@ -4,6 +4,7 @@ const TABS = [
   { id: 'overview', label: 'Overview', icon: '◎' },
   { id: 'nutrition', label: 'Nutrition', icon: '⬡' },
   { id: 'activity', label: 'Move', icon: '◈' },
+  { id: 'gym', label: 'Gym', icon: '◫' },
   { id: 'sleep', label: 'Sleep', icon: '◑' },
   { id: 'weight', label: 'Weight', icon: '◷' },
   { id: 'bp', label: 'BP', icon: '♡' },
