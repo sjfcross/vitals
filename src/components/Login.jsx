@@ -80,6 +80,26 @@ export function Login() {
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+
+        <a
+          className="btn-primary fade-up stagger-2"
+          href="https://sjfcross.github.io/pages/vitals.html"
+          target="_blank"
+          rel="noopener"
+          style={{
+            display: 'block',
+            boxSizing: 'border-box',
+            marginTop: 12,
+            background: 'transparent',
+            color: '#9ca0a4',
+            border: '1px solid #2a2d30',
+            fontWeight: 500,
+            textAlign: 'center',
+            textDecoration: 'none',
+          }}
+        >
+          Documentation ↗
+        </a>
       </div>
     </div>
   )
